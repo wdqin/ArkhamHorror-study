@@ -1242,21 +1242,23 @@ async function addChaosToken(face: any){
       </div>
 
       <div id="player-zone">
-        <PlayerTabs
-          :game="game"
-          :playerId="playerId"
-          :players="players"
-          :playerOrder="playerOrder"
-          :activePlayerId="activePlayerId"
-          :tarotCards="props.scenario.tarotCards"
-          @choose="choose"
-        />
-        <div id="totals">
-          <PoolItem type="doom" :amount="game.totalDoom" tooltip="Total Doom" />
-          <PoolItem type="clue" :amount="game.totalClues" tooltip="Total Spendable Clues" />
-          <PoolItem v-if="blessTokens > 0" type="ct_bless" :amount="blessTokens" />
-          <PoolItem v-if="curseTokens > 0" type="ct_curse" :amount="curseTokens" />
-          <PoolItem v-if="frostTokens > 0" type="ct_frost" :amount="frostTokens" />
+        <div class="player-zone-main">
+          <PlayerTabs
+            :game="game"
+            :playerId="playerId"
+            :players="players"
+            :playerOrder="playerOrder"
+            :activePlayerId="activePlayerId"
+            :tarotCards="props.scenario.tarotCards"
+            @choose="choose"
+          />
+          <div id="totals">
+            <PoolItem type="doom" :amount="game.totalDoom" tooltip="Total Doom" />
+            <PoolItem type="clue" :amount="game.totalClues" tooltip="Total Spendable Clues" />
+            <PoolItem v-if="blessTokens > 0" type="ct_bless" :amount="blessTokens" />
+            <PoolItem v-if="curseTokens > 0" type="ct_curse" :amount="curseTokens" />
+            <PoolItem v-if="frostTokens > 0" type="ct_frost" :amount="frostTokens" />
+          </div>
         </div>
       </div>
     </div>
@@ -1988,10 +1990,20 @@ async function addChaosToken(face: any){
 
 #player-zone {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   background: var(--background-dark);
+}
+
+.player-zone-main {
+  display: flex;
+  flex-direction: row;
+
   .player-info {
     flex: 1;
+  }
+
+  @media (max-width: 800px) and (orientation: portrait) {
+    min-width: 0;
   }
 }
 

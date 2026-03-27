@@ -19,6 +19,11 @@ import ExchangeTokens from '@/arkham/components/ExchangeTokens.vue';
 import ChaosBagChoice from '@/arkham/components/ChaosBagChoice.vue';
 import FormattedEntry from '@/arkham/components/FormattedEntry.vue';
 import QuestionChoices from '@/arkham/components/QuestionChoices.vue';
+import {
+  inlinePromptForQuestion,
+  initialInlinePromptSelections,
+  inlinePromptHasUnmetRequirements,
+} from '@/arkham/questionPrompt';
 
 export interface Props {
   game: Game
@@ -116,20 +121,16 @@ const label = function(body: string) {
 }
 
 const paymentAmountsLabel = computed(() => {
-  if (question.value?.tag === QuestionType.CHOOSE_PAYMENT_AMOUNTS) {
-    return label(question.value.label)
+  if (promptModel.value?.kind === 'payment-amounts') {
+    return formatContent(promptModel.value.label)
   }
 
   return null
 })
 
 const amountsLabel = computed(() => {
-  if (question.value?.tag === QuestionType.CHOOSE_AMOUNTS) {
-    return label(question.value.label)
-  }
-
-  if (question.value?.tag === QuestionType.QUESTION_LABEL && question.value?.question?.tag === QuestionType.CHOOSE_AMOUNTS) {
-    return question.value.question.label
+  if (promptModel.value?.kind === 'amounts') {
+    return formatContent(promptModel.value.label)
   }
 
   return null
@@ -156,16 +157,11 @@ const chooseAmountsChoices = computed<AmountChoice[]>(() => {
 })
 
 const amountSelections = ref<Record<string, number>>({})
+const promptModel = computed(() => inlinePromptForQuestion(question.value, t))
 
 const setInitialAmounts = () => {
-    const labels = question.value?.tag === QuestionType.CHOOSE_AMOUNTS
-      ? question.value.amountChoices.map((choice) => choice.choiceId)
-      : (paymentAmountsChoices.value ?? []).map((choice) => choice.choiceId)
-    amountSelections.value = labels.reduce<Record<string, number>>((previousValue, currentValue) => {
-      previousValue[currentValue] = 0
-      return previousValue
-    }, {})
-  }
+  amountSelections.value = initialInlinePromptSelections(promptModel.value)
+}
 
 const doneLabel = computed(() => {
   const doneIndex = choices.value.findIndex((c) => c.tag === MessageType.DONE)
@@ -201,135 +197,7 @@ watch(
   setInitialAmounts)
 
 const unmetAmountRequirements = computed(() => {
-  if (question.value?.tag === QuestionType.CHOOSE_PAYMENT_AMOUNTS) {
-    const target = question.value.paymentAmountTargetValue
-    if (target) {
-      switch(target.tag) {
-        case 'MaxAmountTarget':
-          {
-            const maxBound = target.contents
-            if (maxBound) {
-              const total = Object.values(amountSelections.value).reduce((a, b) => a + b, 0)
-              return total > maxBound
-            }
-            break
-          }
-        case 'MinAmountTarget':
-          {
-            const minBound = target.contents
-            if (minBound) {
-              const total = Object.values(amountSelections.value).reduce((a, b) => a + b, 0)
-              return total < minBound
-            }
-            break
-          }
-        case 'TotalAmountTarget':
-          {
-            const requiredTotal = target.contents
-            if (requiredTotal) {
-              const total = Object.values(amountSelections.value).reduce((a, b) => a + b, 0)
-              return total !== requiredTotal
-            }
-            break
-          }
-        case 'AmountOneOf':
-          {
-            const totals = target.contents
-            if (totals.length > 0) {
-              const total = Object.values(amountSelections.value).reduce((a, b) => a + b, 0)
-              return totals.indexOf(total) === -1
-            }
-            break
-          }
-      }
-    }
-    return false
-  } else if (question.value?.tag === QuestionType.CHOOSE_AMOUNTS) {
-    switch(question.value.amountTargetValue.tag) {
-      case 'MaxAmountTarget':
-        {
-          const maxBound = question.value.amountTargetValue.contents
-          if (maxBound) {
-            const total = Object.values(amountSelections.value).reduce((a, b) => a + b, 0)
-            return total > maxBound
-          }
-          break
-        }
-      case 'MinAmountTarget':
-        {
-          const minBound = question.value.amountTargetValue.contents
-          if (minBound) {
-            const total = Object.values(amountSelections.value).reduce((a, b) => a + b, 0)
-            return total < minBound
-          }
-          break
-        }
-      case 'TotalAmountTarget':
-        {
-          const requiredTotal = question.value.amountTargetValue.contents
-          if (requiredTotal) {
-            const total = Object.values(amountSelections.value).reduce((a, b) => a + b, 0)
-            return total !== requiredTotal
-          }
-          break
-        }
-      case 'AmountOneOf':
-        {
-          const totals = question.value.amountTargetValue.contents
-          if (totals.length > 0) {
-            const total = Object.values(amountSelections.value).reduce((a, b) => a + b, 0)
-            return totals.indexOf(total) === -1
-          }
-          break
-        }
-    }
-
-    return false
-  } else if (question.value?.tag === QuestionType.QUESTION_LABEL && question.value?.question.tag === QuestionType.CHOOSE_AMOUNTS) {
-    const actual = question.value.question
-    switch(actual.amountTargetValue.tag) {
-      case 'MaxAmountTarget':
-        {
-          const maxBound = actual.amountTargetValue.contents
-          if (maxBound) {
-            const total = Object.values(amountSelections.value).reduce((a, b) => a + b, 0)
-            return total > maxBound
-          }
-          break
-        }
-      case 'MinAmountTarget':
-        {
-          const minBound = actual.amountTargetValue.contents
-          if (minBound) {
-            const total = Object.values(amountSelections.value).reduce((a, b) => a + b, 0)
-            return total < minBound
-          }
-          break
-        }
-      case 'TotalAmountTarget':
-        {
-          const requiredTotal = actual.amountTargetValue.contents
-          if (requiredTotal) {
-            const total = Object.values(amountSelections.value).reduce((a, b) => a + b, 0)
-            return total !== requiredTotal
-          }
-          break
-        }
-      case 'AmountOneOf':
-        {
-          const totals = actual.amountTargetValue.contents
-          if (totals.length > 0) {
-            const total = Object.values(amountSelections.value).reduce((a, b) => a + b, 0)
-            return totals.indexOf(total) === -1
-          }
-          break
-        }
-    }
-
-    return false
-  }
-
-  return true
+  return inlinePromptHasUnmetRequirements(promptModel.value, amountSelections.value)
 })
 
 const submitPaymentAmounts = async () => {

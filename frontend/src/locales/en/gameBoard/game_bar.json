@@ -12,6 +12,7 @@
     "shortcutDraw": "Draw from deck / encounter deck",
     "shortcutTakeResources": "Take Resources",
     "shortcutEndTurn": "End Turn",
+    "shortcutSwitchPerspective": "Cycle investigator perspective (Shift+Tab to reverse)",
 
     "viewSettings": "View Settings",
     "viewSettingTitle": "Settings for {investigator}",

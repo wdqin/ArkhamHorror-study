@@ -37,6 +37,8 @@ import { Card, cardDecoder, toCardContents } from '@/arkham/types/Card'
 import * as Message from '@/arkham/types/Message'
 import { type Question } from '@/arkham/types/Question'
 import { TarotCard, tarotCardDecoder, tarotCardImage } from '@/arkham/types/TarotCard'
+import type { Source } from '@/arkham/types/Source'
+import type { Token } from '@/arkham/types/Token'
 import Campaign from '@/arkham/components/Campaign.vue'
 import CampaignLog from '@/arkham/components/CampaignLog.vue'
 import CampaignSettings from '@/arkham/components/CampaignSettings.vue'
@@ -47,8 +49,10 @@ import GameLog from '@/arkham/components/GameLog.vue'
 import ScenarioSettings from '@/arkham/components/ScenarioSettings.vue'
 import Settings from '@/arkham/components/Settings.vue'
 import StandaloneScenario from '@/arkham/components/StandaloneScenario.vue'
+import TurnGuide from '@/arkham/components/TurnGuide.vue'
 import Draggable from '@/components/Draggable.vue'
 import Menu from '@/components/Menu.vue'
+import { buildTurnGuideModel, type TurnGuideModel } from '@/arkham/turnGuide'
 
 interface GameCard {
   title: string
@@ -121,6 +125,14 @@ const resultQueue = ref<any>([])
 const showLog = ref(false);
 const showShortcuts = ref(false)
 const showSidebar = ref(JSON.parse(localStorage.getItem("showSidebar")??'true'))
+const SIDEBAR_WIDTH_KEY = 'sidebarWidth'
+const SIDEBAR_BREAKPOINT = 800
+const DESKTOP_SIDEBAR_MIN = 280
+const DESKTOP_SIDEBAR_MAX = 560
+const DESKTOP_SIDEBAR_DEFAULT = 360
+const MOBILE_SIDEBAR_MIN = 260
+const MOBILE_SIDEBAR_DEFAULT_RATIO = 0.88
+const MOBILE_SIDEBAR_MAX_RATIO = 0.92
 const socketError = ref(false)
 const error = ref<string | null>(null)
 const solo = ref(false)
@@ -144,6 +156,148 @@ const imageLoadPercent = computed(() => {
   if (imageLoadState.value.total === 0) return 0
   return Math.round((imageLoadState.value.completed / imageLoadState.value.total) * 100)
 })
+const emptyTurnGuide: TurnGuideModel = {
+  visible: false,
+  state: 'your-turn',
+  headline: '',
+  instruction: '',
+  categories: [],
+  signature: 'empty',
+}
+const turnGuide = computed(() => {
+  if (!game.value || !playerId.value || game.value.scenario === null) {
+    return emptyTurnGuide
+  }
+
+  return buildTurnGuideModel(game.value, playerId.value, t)
+})
+const sidebarPanel = ref<'guide' | 'log'>('log')
+const sidebarWidth = ref(DESKTOP_SIDEBAR_DEFAULT)
+const isResizingSidebar = ref(false)
+const isNarrowViewport = ref(window.innerWidth <= SIDEBAR_BREAKPOINT)
+
+function getSidebarBounds(narrow = isNarrowViewport.value) {
+  return {
+    min: narrow ? MOBILE_SIDEBAR_MIN : DESKTOP_SIDEBAR_MIN,
+    max: narrow ? Math.floor(window.innerWidth * MOBILE_SIDEBAR_MAX_RATIO) : DESKTOP_SIDEBAR_MAX,
+  }
+}
+
+function clampSidebarWidth(width: number, narrow = isNarrowViewport.value) {
+  const bounds = getSidebarBounds(narrow)
+  const nextWidth = Math.round(Number.isFinite(width) ? width : DESKTOP_SIDEBAR_DEFAULT)
+  return Math.min(bounds.max, Math.max(bounds.min, nextWidth))
+}
+
+function defaultSidebarWidth(narrow = isNarrowViewport.value) {
+  return clampSidebarWidth(
+    narrow ? Math.floor(window.innerWidth * MOBILE_SIDEBAR_DEFAULT_RATIO) : DESKTOP_SIDEBAR_DEFAULT,
+    narrow
+  )
+}
+
+function isTypingTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+}
+
+function investigatorPerspectiveIds() {
+  if (!game.value || !solo.value) {
+    return []
+  }
+
+  const perspectiveIds = game.value.playerOrder
+    .map((iid) => game.value?.investigators[iid]?.playerId ?? game.value?.otherInvestigators[iid]?.playerId ?? null)
+    .filter((id): id is string => id !== null)
+
+  return [...new Set(perspectiveIds)]
+}
+
+function cycleInvestigatorPerspective(direction: 1 | -1) {
+  if (!solo.value || !playerId.value) {
+    return false
+  }
+
+  const perspectiveIds = investigatorPerspectiveIds()
+  if (perspectiveIds.length < 2) {
+    return false
+  }
+
+  const currentIndex = perspectiveIds.indexOf(playerId.value)
+  const nextIndex = currentIndex === -1
+    ? 0
+    : (currentIndex + direction + perspectiveIds.length) % perspectiveIds.length
+
+  switchInvestigator(perspectiveIds[nextIndex])
+  return true
+}
+
+function persistSidebarWidth(width: number) {
+  localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width))
+}
+
+function setSidebarWidth(width: number, persist = false) {
+  const nextWidth = clampSidebarWidth(width)
+  sidebarWidth.value = nextWidth
+  if (persist) {
+    persistSidebarWidth(nextWidth)
+  }
+}
+
+function syncViewportState() {
+  const wasNarrow = isNarrowViewport.value
+  isNarrowViewport.value = window.innerWidth <= SIDEBAR_BREAKPOINT
+  if (!wasNarrow && isNarrowViewport.value && showSidebar.value) {
+    setSidebarVisibility(false)
+  }
+  setSidebarWidth(sidebarWidth.value || defaultSidebarWidth(), false)
+}
+
+function stopSidebarResize() {
+  if (!isResizingSidebar.value) {
+    return
+  }
+
+  isResizingSidebar.value = false
+  document.body.style.userSelect = ''
+  document.body.style.cursor = ''
+  persistSidebarWidth(sidebarWidth.value)
+  window.removeEventListener('pointermove', onSidebarResize)
+  window.removeEventListener('pointerup', stopSidebarResize)
+  window.removeEventListener('pointercancel', stopSidebarResize)
+}
+
+function onSidebarResize(event: PointerEvent) {
+  if (!isResizingSidebar.value) {
+    return
+  }
+
+  setSidebarWidth(window.innerWidth - event.clientX, false)
+}
+
+function startSidebarResize(event: PointerEvent) {
+  event.preventDefault()
+  isResizingSidebar.value = true
+  document.body.style.userSelect = 'none'
+  document.body.style.cursor = 'col-resize'
+  setSidebarWidth(window.innerWidth - event.clientX, false)
+  window.addEventListener('pointermove', onSidebarResize)
+  window.addEventListener('pointerup', stopSidebarResize)
+  window.addEventListener('pointercancel', stopSidebarResize)
+}
+
+function setSidebarVisibility(value: boolean) {
+  showSidebar.value = value
+  localStorage.setItem("showSidebar", JSON.stringify(showSidebar.value))
+}
+
+const sidebarStyle = computed(() => ({
+  width: `${sidebarWidth.value}px`,
+  flexBasis: `${sidebarWidth.value}px`,
+}))
 
 const format = (str: string) => {
   if (str.startsWith("$")) {
@@ -191,6 +345,21 @@ watch(
       ready.value = true
     })
   }, { immediate: true }
+)
+
+watch(
+  () => [turnGuide.value.visible, turnGuide.value.signature] as const,
+  ([visible, signature], [wasVisible, previousSignature] = [false, ''] as const) => {
+    if (visible && (!wasVisible || signature !== previousSignature)) {
+      sidebarPanel.value = 'guide'
+      return
+    }
+
+    if (!visible && sidebarPanel.value === 'guide') {
+      sidebarPanel.value = 'log'
+    }
+  },
+  { immediate: true }
 )
 
 // Local Decoders
@@ -458,6 +627,14 @@ const handleKeyPress = (event: KeyboardEvent) => {
   if (event.ctrlKey) return
   if (event.metaKey) return
   if (event.altKey) return
+  if (isTypingTarget(event.target)) return
+
+  if (event.key === 'Tab') {
+    if (cycleInvestigatorPerspective(event.shiftKey ? -1 : 1)) {
+      event.preventDefault()
+    }
+    return
+  }
 
   if (feedKonami(event.key)) return
 
@@ -561,8 +738,7 @@ const handleKeyPress = (event: KeyboardEvent) => {
 
 // Sidebar
 const toggleSidebar = function () {
-  showSidebar.value = !showSidebar.value
-  localStorage.setItem("showSidebar", JSON.stringify(showSidebar.value))
+  setSidebarVisibility(!showSidebar.value)
 }
 
 // Undo
@@ -744,6 +920,33 @@ async function chooseAmounts(amounts: Record<string, number>): Promise<void> {
   }
 }
 
+async function exchangeGuideTokens(payload: { source: Source, fromInvestigator: string, toInvestigator: string, token: Token, amount: number }): Promise<void> {
+  if (!game.value || props.spectate) {
+    return
+  }
+
+  oldQuestion.value = game.value.question
+  game.value.question = {}
+  processing.value = true
+
+  try {
+    await Api.exchangeTokens(
+      game.value.id,
+      payload.source,
+      payload.fromInvestigator,
+      payload.toInvestigator,
+      payload.token,
+      payload.amount
+    )
+  } catch (err) {
+    processing.value = false
+    if (game.value && oldQuestion.value) {
+      game.value.question = oldQuestion.value
+    }
+    throw err
+  }
+}
+
 function localize(str: string): string {
   if (str.startsWith("$")) {
     return t(str.slice(1))
@@ -794,11 +997,19 @@ emitter.on('playabilityResult', (result: any) => {
 })
 
 onMounted(() => {
+  const storedSidebarWidth = Number.parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY) ?? '', 10)
+  sidebarWidth.value = Number.isFinite(storedSidebarWidth)
+    ? clampSidebarWidth(storedSidebarWidth)
+    : defaultSidebarWidth()
+  if (isNarrowViewport.value && showSidebar.value) {
+    setSidebarVisibility(false)
+  }
   (window as any).sendDebug = async (msg: any) => { if (game.value) await debug.send(game.value.id, msg) }
   ; (window as any).undo = undo
   ; (window as any).debugChoose = choose
   document.addEventListener('mousemove', onMove, { passive: true })
   document.addEventListener('keydown', handleKeyPress)
+  window.addEventListener('resize', syncViewportState, { passive: true })
   for (var key in localStorage){
     if (key.startsWith('selected-tab:')) localStorage.removeItem(key)
   }
@@ -806,8 +1017,10 @@ onMounted(() => {
 
 onBeforeRouteLeave(() => close())
 onUnmounted(() => {
+  stopSidebarResize()
   document.removeEventListener('keydown', handleKeyPress)
   document.removeEventListener('mousemove', onMove)
+  window.removeEventListener('resize', syncViewportState)
   delete (window as any).sendDebug
   delete (window as any).undo
   delete (window as any).debugChoose
@@ -893,6 +1106,8 @@ onUnmounted(() => {
         <dd>{{ $t('gameBar.shortcutTakeResources') }}</dd>
         <dt>e</dt>
         <dd>{{ $t('gameBar.shortcutEndTurn') }}</dd>
+        <dt>Tab</dt>
+        <dd>{{ $t('gameBar.shortcutSwitchPerspective') }}</dd>
         <template v-for="item in menuItems" :key="item.id">
           <template v-if="item.shortcut">
             <dt>{{item.shortcut}}</dt>
@@ -1100,15 +1315,66 @@ onUnmounted(() => {
           @choose="choose"
           @update="update"
         />
-        <div class="sidebar" v-if="showSidebar && game.scenario !== null && (game.gameState.tag === 'IsActive' || game.gameState.tag === 'IsOver')">
-          <GameLog :game="game" :gameLog="gameLog" @undo="undo" />
+        <button
+          v-if="showSidebar && isNarrowViewport && (game.scenario === null || game.gameState.tag === 'IsActive' || game.gameState.tag === 'IsOver')"
+          class="sidebar-backdrop"
+          type="button"
+          aria-label="Close sidebar"
+          @click="setSidebarVisibility(false)"
+        ></button>
+        <div
+          class="sidebar"
+          :class="{ 'sidebar--drawer': isNarrowViewport, 'sidebar--resizing': isResizingSidebar }"
+          :style="sidebarStyle"
+          v-if="showSidebar && game.scenario !== null && (game.gameState.tag === 'IsActive' || game.gameState.tag === 'IsOver')"
+        >
+          <div class="sidebar-resize-handle" @pointerdown="startSidebarResize"></div>
+          <div class="sidebar-tabs">
+            <button
+              class="sidebar-tab"
+              :class="{ active: sidebarPanel === 'guide' }"
+              :disabled="!turnGuide.visible"
+              @click="sidebarPanel = 'guide'"
+            >
+              {{ $t('turnGuide.tab') }}
+            </button>
+            <button
+              class="sidebar-tab"
+              :class="{ active: sidebarPanel === 'log' }"
+              @click="sidebarPanel = 'log'"
+            >
+              {{ $t('turnGuide.logTab') }}
+            </button>
+          </div>
+          <div class="sidebar-panel" v-if="sidebarPanel === 'guide' && turnGuide.visible">
+            <TurnGuide
+              :model="turnGuide"
+              :game="game"
+              :disabled="processing"
+              :canAct="!spectate"
+              variant="sidebar"
+              @choose="choose"
+              @choose-amounts="chooseAmounts"
+              @choose-payment-amounts="choosePaymentAmounts"
+              @exchange-tokens="exchangeGuideTokens"
+            />
+          </div>
+          <div class="sidebar-panel" v-else>
+            <GameLog :game="game" :gameLog="gameLog" @undo="undo" />
+          </div>
         </div>
         <div class="game-over" v-if="gameOver">
           <p>{{ $t('gameOver') }}</p>
           <button class="replay-button" @click="router.push({name: 'ReplayGame', params: { gameId }})">{{ $t('watchReplay') }}</button>
           <CampaignLog v-if="game !== null" :game="game" :cards="cards" :playerId="playerId" />
         </div>
-        <div class="sidebar" v-if="showSidebar && game.scenario === null">
+        <div
+          class="sidebar"
+          :class="{ 'sidebar--drawer': isNarrowViewport, 'sidebar--resizing': isResizingSidebar }"
+          :style="sidebarStyle"
+          v-if="showSidebar && game.scenario === null"
+        >
+          <div class="sidebar-resize-handle" @pointerdown="startSidebarResize"></div>
           <GameLog :game="game" :gameLog="gameLog" @undo="undo" />
         </div>
       </div>
@@ -1142,6 +1408,7 @@ onUnmounted(() => {
   height: calc(100vh - 80px);
   display: flex;
   flex: 1;
+  position: relative;
 }
 
 .socketWarning  {
@@ -1238,18 +1505,111 @@ onUnmounted(() => {
 
 .sidebar {
   height: 100%;
-  width: 25vw;
-  max-width: 300px;
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
   background: #d0d9dc;
-
-  @media (max-width: 800px) {
-    display: none;
-  }
+  min-width: 0;
+  position: relative;
+  transition: box-shadow 0.18s ease, width 0.18s ease;
 
   @media (prefers-color-scheme: dark) {
     background: #1C1C1C;
+  }
+}
+
+.sidebar--drawer {
+  bottom: 0;
+  box-shadow: -20px 0 40px rgba(0, 0, 0, 0.32);
+  position: absolute;
+  right: 0;
+  top: 0;
+  z-index: 40;
+}
+
+.sidebar--resizing {
+  transition: none;
+}
+
+.sidebar-backdrop {
+  background: rgba(7, 10, 18, 0.48);
+  border: 0;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  position: absolute;
+  z-index: 35;
+}
+
+.sidebar-resize-handle {
+  bottom: 0;
+  cursor: col-resize;
+  left: 0;
+  position: absolute;
+  top: 0;
+  touch-action: none;
+  width: 12px;
+  z-index: 3;
+
+  &::after {
+    background: rgba(18, 24, 42, 0.18);
+    content: '';
+    inset: 0 auto 0 5px;
+    position: absolute;
+    width: 2px;
+  }
+}
+
+.sidebar-tabs {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: 1fr 1fr;
+  padding: 10px 10px 0 18px;
+  position: relative;
+  z-index: 2;
+}
+
+.sidebar-tab {
+  background: rgba(10, 14, 24, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px 10px 0 0;
+  color: #eef0f7;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+}
+
+.sidebar-tab.active {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.sidebar-tab:disabled {
+  color: rgba(238, 240, 247, 0.45);
+  cursor: default;
+}
+
+.sidebar-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  z-index: 2;
+}
+
+.sidebar-panel :deep(.game-log) {
+  flex: 1;
+  height: auto;
+  margin-top: 0;
+  width: auto;
+}
+
+@media (max-width: 800px) {
+  .sidebar {
+    max-width: 92vw;
   }
 }
 
