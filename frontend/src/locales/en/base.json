@@ -22,6 +22,12 @@
   "logIn": "Log in",
   "newGame": "New Game",
   "newPassword": "New Password",
+  "imageLoading": {
+    "initial": "Loading game images",
+    "update": "Loading new images",
+    "progress": "{percent}% complete",
+    "failed": "{count} image failed to load. The game will continue. | {count} images failed to load. The game will continue."
+  },
   "password": "Password",
   "passwordResetRequested": "Password reset requested",
   "passwordUpdatedSuccessfully": "Password updated successfully",

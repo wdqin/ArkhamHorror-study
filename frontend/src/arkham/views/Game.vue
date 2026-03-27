@@ -61,6 +61,17 @@ interface GameCardOnly {
   card: Card
 }
 
+type ImageLoadStage = 'initial' | 'update'
+type ImageLoadResult = 'loaded' | 'error' | 'timeout'
+
+interface ImageLoadState {
+  active: boolean
+  stage: ImageLoadStage
+  total: number
+  completed: number
+  failed: number
+}
+
 // TODO: contents should not be string
 type ServerResult =
   | { tag: "GameError"; contents: string }
@@ -119,6 +130,20 @@ const showSettings = ref(false)
 const processing = ref(false)
 const oldQuestion = ref<Record<string, Question> | null>(null)
 const { t } = useI18n();
+const IMAGE_LOAD_TIMEOUT_MS = 8000
+const FAILED_IMAGE_NOTICE_MS = 1200
+const imageLoadState = ref<ImageLoadState>({
+  active: false,
+  stage: 'initial',
+  total: 0,
+  completed: 0,
+  failed: 0,
+})
+const imageLoadMessage = computed(() => t(`imageLoading.${imageLoadState.value.stage}`))
+const imageLoadPercent = computed(() => {
+  if (imageLoadState.value.total === 0) return 0
+  return Math.round((imageLoadState.value.completed / imageLoadState.value.total) * 100)
+})
 
 const format = (str: string) => {
   if (str.startsWith("$")) {
@@ -157,7 +182,7 @@ watch(
     if (!newV) return
     if (newV === oldV) return
     await fetchGame(props.gameId, props.spectate).then(async ({ game: newGame, playerId: newPlayerId, multiplayerMode}) => {
-      try { await loadAllImages(newGame) } catch (e) { console.error(e) }
+      await loadAllImages(newGame, 'initial')
       window.g = newGame
       game.value = newGame
       solo.value = multiplayerMode === "Solo"
@@ -220,7 +245,7 @@ function scheduleApplyUpdate(payload:string){
   if (decoding){ pendingUpdate = payload; return }
   decoding = true
   Arkham.gameDecoder.decodePromise(payload).then(async updatedGame=>{
-    await loadAllImages(updatedGame)
+    await loadAllImages(updatedGame, 'update')
     game.value = updatedGame
     gameLog.value = Object.freeze([...updatedGame.log])
     if (solo.value === true) {
@@ -598,22 +623,88 @@ const continueUI = () => {
   uiLock.value = false
 }
 
+function resetImageLoadState() {
+  imageLoadState.value = {
+    active: false,
+    stage: 'initial',
+    total: 0,
+    completed: 0,
+    failed: 0,
+  }
+}
 
-async function loadAllImages(game:Arkham.Game):Promise<void>{
-  const pending: string[] = []
+function startImageLoad(stage: ImageLoadStage, total: number) {
+  imageLoadState.value = {
+    active: true,
+    stage,
+    total,
+    completed: 0,
+    failed: 0,
+  }
+}
+
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+function loadImage(url: string): Promise<ImageLoadResult> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    let settled = false
+
+    const finish = (result: ImageLoadResult) => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timeoutId)
+      img.onload = null
+      img.onerror = null
+      resolve(result)
+    }
+
+    const timeoutId = window.setTimeout(() => finish('timeout'), IMAGE_LOAD_TIMEOUT_MS)
+    img.onload = () => finish('loaded')
+    img.onerror = () => finish('error')
+    img.src = url
+  })
+}
+
+function completeImageLoad(result: ImageLoadResult, url: string) {
+  if (result === 'loaded') {
+    preloaded.add(url)
+  } else if (result === 'timeout') {
+    console.error(`Timed out loading ${url}`)
+  } else {
+    console.error(`Could not load ${url}`)
+  }
+
+  imageLoadState.value = {
+    ...imageLoadState.value,
+    completed: imageLoadState.value.completed + 1,
+    failed: imageLoadState.value.failed + (result === 'loaded' ? 0 : 1),
+  }
+}
+
+async function loadAllImages(game:Arkham.Game, stage: ImageLoadStage):Promise<void>{
+  const pending = new Set<string>()
   for (const card of Object.values(game.cards)) {
     const {cardCode, isFlipped} = toCardContents(card)
     const url = imgsrc(`cards/${cardCode.replace(/^c/,'')}${isFlipped?'b':''}.avif`)
-    if (!preloaded.has(url)) pending.push(url)
+    if (!preloaded.has(url)) pending.add(url)
   }
-  if (pending.length === 0) return
+  if (pending.size === 0) return
 
-  await Promise.all(pending.map(url => new Promise<void>((resolve, reject)=>{
-    const img = new Image()
-    img.onload = () => { preloaded.add(url); resolve() }
-    img.onerror = () => reject(`Could not load ${url}`)
-    img.src = url
-  })))
+  startImageLoad(stage, pending.size)
+
+  await Promise.all([...pending].map(async (url) => {
+    const result = await loadImage(url)
+    completeImageLoad(result, url)
+  }))
+
+  if (imageLoadState.value.failed > 0) {
+    await pause(FAILED_IMAGE_NOTICE_MS)
+  }
+
+  resetImageLoadState()
 }
 
 // Callbacks
@@ -734,6 +825,19 @@ onUnmounted(() => {
       </section>
     </div>
   </div>
+  <div v-else-if="imageLoadState.active && (!ready || !game || !playerId)" class="column page-container image-loading-screen">
+    <div class="image-loading-modal">
+      <h2 class="title">{{ imageLoadMessage }}</h2>
+      <p class="image-loading-count">{{ imageLoadState.completed }} / {{ imageLoadState.total }}</p>
+      <div class="image-loading-progress" aria-hidden="true">
+        <div class="image-loading-progress-bar" :style="{ width: `${imageLoadPercent}%` }"></div>
+      </div>
+      <p class="image-loading-status">{{ $t('imageLoading.progress', { percent: imageLoadPercent }) }}</p>
+      <p v-if="imageLoadState.failed > 0" class="image-loading-warning">
+        {{ $t('imageLoading.failed', { count: imageLoadState.failed }) }}
+      </p>
+    </div>
+  </div>
   <div id="game" v-else-if="ready && game && playerId">
     <dialog v-if="error" class="error-dialog">
       <h2>{{$t('error')}}</h2>
@@ -751,6 +855,19 @@ onUnmounted(() => {
         :loop="true"
         :speed="1"
         ref="anim" />
+    </div>
+    <div v-if="imageLoadState.active" class="image-loading-overlay">
+      <div class="image-loading-modal">
+        <h2 class="title">{{ imageLoadMessage }}</h2>
+        <p class="image-loading-count">{{ imageLoadState.completed }} / {{ imageLoadState.total }}</p>
+        <div class="image-loading-progress" aria-hidden="true">
+          <div class="image-loading-progress-bar" :style="{ width: `${imageLoadPercent}%` }"></div>
+        </div>
+        <p class="image-loading-status">{{ $t('imageLoading.progress', { percent: imageLoadPercent }) }}</p>
+        <p v-if="imageLoadState.failed > 0" class="image-loading-warning">
+          {{ $t('imageLoading.failed', { count: imageLoadState.failed }) }}
+        </p>
+      </div>
     </div>
     <CardOverlay />
     <Draggable v-if="showShortcuts">
@@ -1048,6 +1165,75 @@ onUnmounted(() => {
     background: #FFF;
     border-radius: 4px;
   }
+}
+
+.image-loading-screen {
+  align-items: center;
+  background:
+    radial-gradient(circle at top, rgba(110, 134, 64, 0.18), transparent 45%),
+    linear-gradient(180deg, rgba(8, 11, 20, 0.96), rgba(18, 23, 37, 0.98));
+  display: flex;
+  justify-content: center;
+}
+
+.image-loading-overlay {
+  align-items: center;
+  backdrop-filter: blur(6px);
+  background: rgba(7, 10, 18, 0.76);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  position: fixed;
+  z-index: 900;
+}
+
+.image-loading-modal {
+  background: rgba(14, 19, 31, 0.94);
+  border: 1px solid rgba(184, 199, 120, 0.28);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  color: var(--text, #d9dded);
+  display: grid;
+  gap: 0.9rem;
+  max-width: 460px;
+  padding: 1.5rem;
+  text-align: center;
+  width: min(90vw, 460px);
+
+  .title {
+    margin: 0;
+  }
+}
+
+.image-loading-count {
+  color: var(--title, #ece5bf);
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.image-loading-progress {
+  background: rgba(255,255,255,0.08);
+  border-radius: 999px;
+  height: 14px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.image-loading-progress-bar {
+  background: linear-gradient(90deg, #6e8640, #b4ca78);
+  border-radius: inherit;
+  height: 100%;
+  transition: width 0.18s ease-out;
+}
+
+.image-loading-status,
+.image-loading-warning {
+  margin: 0;
+}
+
+.image-loading-warning {
+  color: #f2d49b;
 }
 
 .sidebar {

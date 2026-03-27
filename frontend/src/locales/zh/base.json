@@ -16,6 +16,12 @@
   "myDecks": "我的牌組",
   "newGame": "新遊戲",
   "newPassword": "新密碼",
+  "imageLoading": {
+    "initial": "正在讀取遊戲圖片",
+    "update": "正在讀取新圖片",
+    "progress": "已完成 {percent}%",
+    "failed": "有 {count} 張圖片讀取失敗，遊戲將繼續。"
+  },
   "password": "密碼",
   "passwordResetRequested": "密碼重置已請求",
   "passwordUpdatedSuccessfully": "密碼已成功更新",
