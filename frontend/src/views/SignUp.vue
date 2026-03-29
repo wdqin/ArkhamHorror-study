@@ -61,6 +61,9 @@ async function register() {
       <div>
         <button>{{$t('register')}}</button>
       </div>
+      <div v-if="signUpError" class="error">
+        {{ signUpError }}
+      </div>
     </section>
   </form>
 </template>
@@ -102,6 +105,12 @@ button {
   &:hover {
       background: hsl(80, 35%, 32%);
   }
+}
+
+.error {
+  color: #a63a3a;
+  margin-top: 8px;
+  text-align: center;
 }
 
 i.secret {
