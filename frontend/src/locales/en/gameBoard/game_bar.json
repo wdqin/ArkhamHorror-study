@@ -17,6 +17,9 @@
     "viewSettings": "View Settings",
     "viewSettingTitle": "Settings for {investigator}",
     "viewSettingSkipTriggers": "Skip triggers during skill tests that don't affect the outcome",
+    "viewSettingCardSize": "Card size",
+    "viewSettingCardSizeHelp": "Drag to preview card size changes across the current game board.",
+    "viewSettingCardSizeReset": "Reset to default",
 
     "viewChaosBag": "View Chaos Bag",
     "chaosBag": "Chaos Bag",

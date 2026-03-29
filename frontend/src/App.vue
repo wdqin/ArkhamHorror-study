@@ -1,37 +1,46 @@
 <template>
-  <div v-if="!avifSupported" class="error-message container">
-    <header><h2 class="title">Please update your browser</h2></header>
-    <section class="box">
-      <p>Your browser does not support AVIF images. Please update your browser or switch to a different one.</p>
-    </section>
+  <div class="app-shell" :style="appStyle">
+    <div v-if="!avifSupported" class="error-message container">
+      <header><h2 class="title">Please update your browser</h2></header>
+      <section class="box">
+        <p>Your browser does not support AVIF images. Please update your browser or switch to a different one.</p>
+      </section>
+    </div>
+    <template v-else>
+      <NavBar/>
+      <Suspense>
+        <router-view v-slot="{ Component }" class="router-container">
+          <transition name="fade">
+            <component :is="Component" />
+          </transition>
+        </router-view>
+        <template #fallback>
+          Loading...
+        </template>
+      </Suspense>
+      <ModalsContainer />
+    </template>
+    <footer><a href="https://www.fantasyflightgames.com/en/products/arkham-horror-the-card-game/" rel="noreferrer" target="_blank" tabindex="-1">Arkham Horror: The Card Game™</a> and all related content © <a href="https://www.fantasyflightgames.com" rel="noreferrer" target="_blank" tabindex="-1">Fantasy Flight Games (FFG)</a>. This site is not produced, endorsed by or affiliated with FFG. <router-link to="/about">{{$t('nav.about')}}.</router-link></footer>
   </div>
-  <template v-else>
-    <NavBar/>
-    <Suspense>
-      <router-view v-slot="{ Component }" class="router-container">
-        <transition name="fade">
-          <component :is="Component" />
-        </transition>
-      </router-view>
-      <template #fallback>
-        Loading...
-      </template>
-    </Suspense>
-    <ModalsContainer />
-  </template>
-  <footer><a href="https://www.fantasyflightgames.com/en/products/arkham-horror-the-card-game/" rel="noreferrer" target="_blank" tabindex="-1">Arkham Horror: The Card Game™</a> and all related content © <a href="https://www.fantasyflightgames.com" rel="noreferrer" target="_blank" tabindex="-1">Fantasy Flight Games (FFG)</a>. This site is not produced, endorsed by or affiliated with FFG. <router-link to="/about">{{$t('nav.about')}}.</router-link></footer>
 </template>
 
 <script lang="ts" setup>
 import { ModalsContainer } from 'vue-final-modal'
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted, watchEffect } from 'vue'
 import { useSiteSettingsStore } from '@/stores/site_settings'
 import { useDbCardStore } from '@/stores/dbCards'
 import { checkImageExists } from '@/arkham/helpers'
+import { useSettings } from '@/stores/settings'
 import NavBar from '@/components/NavBar.vue'
 import 'floating-vue/dist/style.css'
 
 const settingsStore = useSiteSettingsStore()
+const uiSettings = useSettings()
+const appStyle = computed(() => ({ '--card-scale': String(uiSettings.cardScale) }))
+
+watchEffect(() => {
+  document.documentElement.style.setProperty('--card-scale', String(uiSettings.cardScale))
+})
 
 onMounted(async () => {
   await settingsStore.init()
@@ -546,8 +555,11 @@ button {
   --button-2: #532e61;
   --button-2-highlight: #4d2b61;
 
-  --card-width: min(calc(2.5vw + 20px), 60px);
-  --card-height: min(calc(3.545vw + 28.36px), 85.08px);
+  --base-card-width: min(calc(2.5vw + 20px), 60px);
+  --base-card-height: min(calc(3.545vw + 28.36px), 85.08px);
+  --card-scale: 1;
+  --card-width: calc(var(--base-card-width) * var(--card-scale));
+  --card-height: calc(var(--base-card-height) * var(--card-scale));
   --card-aspect: 0.705;
   --tarot-aspec: 0.571429;
   --card-sideways-aspect: 1.41844;
@@ -562,10 +574,18 @@ button {
 
   --bullet-red: #391714;
   
-  --pool-token-width: min(30px, 4vw);
+  --base-pool-token-width: min(30px, 4vw);
+  --pool-token-width: calc(var(--base-pool-token-width) * var(--card-scale));
   @media (max-width: 800px) and (orientation: portrait) {
-    --pool-token-width: 30px;
+    --base-pool-token-width: 30px;
   }
+}
+
+.app-shell {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
 }
 
 h2.title {

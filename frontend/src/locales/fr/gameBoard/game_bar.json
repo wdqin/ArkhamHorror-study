@@ -16,6 +16,9 @@
     "viewSettings": "Paramètres",
     "viewSettingTitle": "Paramètres de {investigator}",
     "viewSettingSkipTriggers": "Ignorer les déclenchements sans effet sur l'action en cours",
+    "viewSettingCardSize": "Taille des cartes",
+    "viewSettingCardSizeHelp": "Faites glisser pour prévisualiser la taille des cartes dans la partie en cours.",
+    "viewSettingCardSizeReset": "Rétablir la taille par défaut",
 
     "viewChaosBag": "Voir la Réserve du Chaos",
     "chaosBag": "Réserve du Chaos",

@@ -242,7 +242,20 @@ const scenarioDecks = computed(() => {
   if (!props.scenario.decks) return null
   return Object.entries(props.scenario.decks)
 })
+const currentInvestigator = computed(() =>
+  Object.values(props.game.investigators).find((investigator) => investigator.playerId === props.playerId)
+)
+const currentLocation = computed(() => {
+  const investigator = currentInvestigator.value
+  return investigator ? props.game.locations[investigator.location] ?? null : null
+})
+const currentLocationBackground = computed(() => {
+  const location = currentLocation.value
+  if (!location) return null
 
+  const suffix = location.revealed ? '' : 'b'
+  return imgsrc(`cards/${location.cardCode.replace('c', '')}${suffix}.avif`)
+})
 const isVertical = function(area: string) {
   const [start, end] = area.split('--')
   const startLocation = locations.value.find((l) => l.id === start);
@@ -766,6 +779,15 @@ async function addChaosToken(face: any){
   </div>
   <div v-else-if="!gameOver" id="scenario" class="scenario" :data-scenario="scenario.id">
     <div class="scenario-body" :class="{'split-view': splitView }">
+      <div class="scenario-background" :class="{ 'has-location-background': !!currentLocationBackground }" aria-hidden="true">
+        <img
+          v-if="currentLocationBackground"
+          class="scenario-background-image"
+          :src="currentLocationBackground"
+          alt=""
+          aria-hidden="true"
+        />
+      </div>
       <Draggable v-if="showOutOfPlay || forcedShowOutOfPlay">
         <template #handle><header><h2>{{ $t('gameBar.outOfPlay') }}</h2></header></template>
         <div class="card-row-cards">
@@ -1385,9 +1407,17 @@ async function addChaosToken(face: any){
   width: 100%;
   flex: 1;
   inset: 0;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
 
   display: grid;
   grid-template-rows: auto 1fr auto;
+
+  > * {
+    position: relative;
+    z-index: 1;
+  }
 
   &.split-view {
     grid-template-columns: 1fr 2fr;
@@ -1437,6 +1467,50 @@ async function addChaosToken(face: any){
       grid-row: 1 / 5;
     }
   }
+}
+
+.scenario-background {
+  position: absolute !important;
+  inset: 0;
+  z-index: 0 !important;
+  pointer-events: none;
+  overflow: hidden;
+  background: var(--background);
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  &::after {
+    background:
+      radial-gradient(circle at center, rgba(0, 0, 0, 0.08) 0%, rgba(0, 0, 0, 0.28) 100%),
+      linear-gradient(180deg, rgba(10, 12, 16, 0.22) 0%, rgba(10, 12, 16, 0.46) 100%);
+    opacity: 0;
+    transition: opacity 0.25s ease-out;
+  }
+
+  &.has-location-background::after {
+    opacity: 1;
+  }
+}
+
+.scenario-background-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+  transform: scale(1.72);
+  filter: blur(2px) saturate(1.1);
+  opacity: 0;
+  transition: opacity 0.25s ease-out;
+}
+
+.scenario-background.has-location-background .scenario-background-image {
+  opacity: 1;
 }
 
 .location-cards {

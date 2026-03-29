@@ -16,6 +16,9 @@
     "viewSettings": "설정 보기",
     "viewSettingTitle": "{investigator} 조사자의 설정 보기",
     "viewSettingSkipTriggers": "능력 테스트 도중에 발생하는 격발 중, 결과에 영향을 미치지 않는 격발은 건너뛰기",
+    "viewSettingCardSize": "카드 크기",
+    "viewSettingCardSizeHelp": "슬라이더를 움직여 현재 게임 화면에서 카드 크기 변화를 바로 미리 봅니다.",
+    "viewSettingCardSizeReset": "기본 크기로 되돌리기",
 
     "viewChaosBag": "혼돈 주머니 보기",
     "chaosBag": "혼돈 주머니",

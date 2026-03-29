@@ -16,6 +16,9 @@
     "viewSettings": "查看设置",
     "viewSettingTitle": "{investigator}的设置",
     "viewSettingSkipTriggers": "跳过技能检定期间不影响结果的触发器",
+    "viewSettingCardSize": "卡牌大小",
+    "viewSettingCardSizeHelp": "拖动滑条可实时预览当前游戏界面的卡牌大小变化。",
+    "viewSettingCardSizeReset": "恢复默认大小",
 
     "viewChaosBag": "查看混乱袋",
     "chaosBag": "混乱袋",
