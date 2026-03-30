@@ -4,9 +4,10 @@ import { useUserStore } from '@/stores/user';
 import { useRouter, useRoute } from 'vue-router';
 import { debugGame, deleteGame, fetchGames, fetchNotifications } from '@/arkham/api';
 import type { GameDetails } from '@/arkham/types/Game';
-import type { User } from '@/types';
+import type { AppNotification } from '@/arkham/api';
 import GameRow from '@/arkham/components/GameRow.vue';
 import NewGame from '@/arkham/views/NewCampaign.vue';
+import PrimaryButton from '@/components/PrimaryButton.vue';
 import { storeToRefs } from 'pinia';
 
 const route = useRoute()
@@ -14,7 +15,7 @@ const router = useRouter()
 const store = useUserStore()
 const { currentUser } = storeToRefs(store)
 const games: Ref<GameDetails[]> = ref([])
-const notifications: Ref<Notification[]> = ref([])
+const notifications: Ref<AppNotification[]> = ref([])
 
 const dismissedNotifications = JSON.parse(localStorage.getItem('dismissedNotifications') ?? "[]")
 
@@ -23,7 +24,7 @@ const finishedGames = computed(() => games.value.filter(g => g.gameState.tag ===
 
 fetchGames().then((result) => games.value = result.filter((g) => g.tag === 'game') as GameDetails[])
 
-fetchNotifications().then((result) => notifications.value = result.data.filter((n: number) => !dismissedNotifications.includes(n.id)))
+fetchNotifications().then((result) => notifications.value = result.filter((n: AppNotification) => !dismissedNotifications.includes(n.id)))
 
 async function deleteGameEvent(game: GameDetails) {
   deleteGame(game.id).then(() => {
@@ -65,7 +66,7 @@ const toggleNewGame = () => {
   })
 }
 
-const dismissNotification = (notification) => {
+const dismissNotification = (notification: AppNotification) => {
   localStorage.setItem('dismissedNotifications', JSON.stringify([notification.id, ...dismissedNotifications]))
   notifications.value = notifications.value.filter(n => n.id !== notification.id)
 }
@@ -73,27 +74,25 @@ const dismissNotification = (notification) => {
 
 <template>
   <div class="page-container">
-    <div class="home page-content">
+    <NewGame v-if="currentUser && newGame" @close="toggleNewGame">
+      <template #cancel>
+        <button @click="toggleNewGame" class="cancel-new-game-button">
+          <span>Cancel</span>
+        </button>
+      </template>
+    </NewGame>
+
+    <div v-if="!newGame" class="home page-content">
       <div class="notification" v-for="notification in notifications" :key="notification.id">
         <p v-html="notification.body"></p>
         <a @click.prevent="dismissNotification(notification)" href="#">Dismiss</a>
       </div>
 
-      <div v-if="currentUser" class="container">
-        <NewGame v-if="newGame" @close="toggleNewGame">
-          <template #cancel>
-            <button @click="toggleNewGame" class="cancel-new-game-button">
-              <span>Cancel</span>
-            </button>
-          </template>
-        </NewGame>
-      </div>
-
-      <div v-if="!newGame" class="container">
+      <div class="container">
         <section>
           <header class="main-header">
             <h2>{{$t('activeGames')}}</h2>
-            <button @click="toggleNewGame" class="new-game-button">New Game</button>
+            <PrimaryButton label="New Game" @click="toggleNewGame" />
           </header>
           <div v-if="activeGames.length === 0" class="box">
             <p>No active games.</p>
@@ -126,8 +125,9 @@ h2 {
   font-size: 2em;
   text-transform: uppercase;
   font-family: teutonic, sans-serif;
-  @media (max-width: 600px) {
-      text-align: center;
+  margin: 0;
+  @media (max-width: 768px) {
+    font-size: 1.5em;
   }
 }
 
@@ -151,6 +151,12 @@ h2 {
   max-width: 98vw;
   min-width: 60vw;
   margin: 0 auto;
+  @media (max-width: 768px) {
+    min-width: unset;
+    width: 100%;
+    padding: 0 12px;
+    box-sizing: border-box;
+  }
 }
 
 .slide-enter-active,
@@ -179,7 +185,6 @@ button.cancel-new-game-button {
   font-weight: bolder;
   width: fit-content;
   background-color: var(--survivor);
-  margin-block: 10px;
   &:hover {
     background-color: var(--survivor-extra-dark);
   }

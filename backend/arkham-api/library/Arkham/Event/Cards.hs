@@ -2,6 +2,7 @@ module Arkham.Event.Cards (module Arkham.Event.Cards, module X) where
 
 import Arkham.Card.CardCode
 import Arkham.Card.CardDef
+import Arkham.Event.Cards.AndrePatel as X
 import Arkham.Event.Cards.Core2026 as X
 import Arkham.Event.Cards.EdgeOfTheEarth as X
 import Arkham.Event.Cards.NightOfTheZealot as X
@@ -19,6 +20,7 @@ import Arkham.Event.Cards.TheForgottenAge as X
 import Arkham.Event.Cards.TheInnsmouthConspiracy as X
 import Arkham.Event.Cards.ThePathToCarcosa as X
 import Arkham.Event.Cards.TheScarletKeys as X
+import Arkham.Event.Cards.TommyMuldoon2 as X
 import Arkham.Prelude hiding (catch)
 
 allPlayerEventCards :: Map CardCode CardDef
@@ -30,6 +32,8 @@ allPlayerEventCards =
       , aChanceEncounter2
       , aGlimmerOfHope
       , aGlimmerOfHope2
+      , aSuddenFall
+      , aSuddenFall2
       , aTestOfWill
       , aTestOfWill1
       , aTestOfWill2
@@ -74,6 +78,7 @@ allPlayerEventCards =
       , bloodRite
       , bloodWillHaveBlood2
       , bolas
+      , bounty
       , breachTheDoor
       , breakingAndEntering
       , breakingAndEntering2
@@ -92,6 +97,8 @@ allPlayerEventCards =
       , cheatDeath5
       , cheatTheSystem1
       , cleanSneak4
+      , cleanSweep
+      , cleanSweep2
       , cleanThemOut
       , closeCall2
       , confound3
@@ -113,6 +120,7 @@ allPlayerEventCards =
       , crypticWritings2
       , cunningDistraction
       , customAmmunition3
+      , customGrip
       , customModifications
       , daringManeuver
       , daringManeuver2
@@ -178,6 +186,7 @@ allPlayerEventCards =
       , explosiveWard
       , exposeWeakness1
       , exposeWeakness3
+      , extendedBarrel1
       , extensiveResearch
       , extensiveResearch1
       , extraAmmunition1
@@ -250,6 +259,7 @@ allPlayerEventCards =
       , intelReport
       , interrogate
       , intimidation
+      , ironSights
       , iveGotAPlan
       , iveGotAPlan2
       , iveHadWorse2
@@ -282,6 +292,7 @@ allPlayerEventCards =
       , lucky3
       , lure1
       , lure2
+      , makeEmSing
       , makeshiftTrap
       , makingPreparations
       , manipulateDestiny2
@@ -318,6 +329,7 @@ allPlayerEventCards =
       , oneInTheChamber
       , oneTwoPunch
       , oneTwoPunch5
+      , onTheBeat1
       , onTheHunt
       , onTheHunt3
       , onTheLam
@@ -332,8 +344,11 @@ allPlayerEventCards =
       , parallelFates2
       , payDay1
       , payYourDue
+      , payYourDues
       , perseverance
       , persuasion
+      , physicalFitness
+      , physicalFitness2
       , pilfer
       , pilfer3
       , powerWord
@@ -352,6 +367,8 @@ allPlayerEventCards =
       , putrescentRot
       , quantumFlux
       , quantumParadox
+      , quickExit
+      , quickExit2
       , quickGetaway
       , quickShot3
       , radiantSmite1
@@ -363,9 +380,12 @@ allPlayerEventCards =
       , refine
       , regurgitation
       , reliable1
+      , restrained
       , riastrad1
       , righteousHunt1
       , rightToolForTheJob
+      , rightUnderTheirNoses
+      , rightUnderTheirNoses3
       , riteOfEquilibrium5
       , sacrifice1
       , salvage2
@@ -403,6 +423,8 @@ allPlayerEventCards =
       , spectralRazor2
       , spectralShield
       , spiritualEcho2
+      , stakeout
+      , stakeout3
       , stallForTime
       , standTogether
       , standTogether3
@@ -410,6 +432,7 @@ allPlayerEventCards =
       , stirThePot
       , stirThePot5
       , stirringUpTrouble1
+      , stockAmmoReload2
       , stormOfSpirits
       , stormOfSpirits3
       , stouthearted

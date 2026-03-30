@@ -796,8 +796,12 @@ allTreacheries =
       , -- Stella Clark
         SomeTreacheryCard calledByTheMists
       , SomeTreacheryCard atychiphobia
+      , -- Tommy Muldoon
+        SomeTreacheryCard looseCannon
+      , SomeTreacheryCard overconfident
       , -- André Patel
-        SomeTreacheryCard weightOfTheWorld
+        SomeTreacheryCard unaware
+      , SomeTreacheryCard weightOfTheWorld
       , -- Side Stories
         --- Curse of the Rougarou
         SomeTreacheryCard cursedSwamp

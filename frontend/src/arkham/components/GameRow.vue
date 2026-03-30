@@ -5,6 +5,7 @@ import type { Difficulty } from '@/arkham/types/Difficulty';
 import type { CampaignDetails } from '@/arkham/types/Campaign';
 import type { ScenarioDetails } from '@/arkham/types/Scenario';
 import { imgsrc } from '@/arkham/helpers';
+import Prompt from '@/components/Prompt.vue'
 
 const props = withDefaults(defineProps<{
   game: GameDetails
@@ -71,16 +72,14 @@ const toCssName = (s: string): string => s.charAt(0).toLowerCase() + s.substring
           <div class="game-difficulty">{{difficulty}}</div>
 
           <div v-if="deleteGame" class="game-delete">
-              <transition name="slide">
-                <a v-show="!deleting" href="#delete" @click.prevent="deleting = true"><font-awesome-icon icon="trash" /></a>
-              </transition>
-              <transition name="slide">
-                <div class="delete-buttons" v-show="deleting">
-                  <button href="#delete" @click.prevent="deleting = false">Cancel</button>
-                  <button class="delete-button" href="#delete" @click.prevent="deleteGame">Delete</button>
-                </div>
-              </transition>
-            </div>
+            <a href="#delete" @click.prevent="deleting = true"><font-awesome-icon icon="trash" /></a>
+          </div>
+          <Prompt
+            v-if="deleting && deleteGame"
+            prompt="Are you sure you want to delete this game?"
+            :yes="deleteGame"
+            :no="() => deleting = false"
+          />
         </div>
       </div>
       <div class="game-subdetails">
@@ -187,9 +186,13 @@ h2 {
   }
 
   @media (max-width: 600px) {
-    margin: 0;
-    padding: 0;
     justify-content: flex-start;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.05);
+    border-left: 3px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    padding: 5px 8px;
+    box-sizing: border-box;
     img {
       margin: 0;
     }
@@ -214,6 +217,9 @@ h2 {
   display: inline;
   padding: 5px;
   border-radius: 10px;
+  @media (max-width: 768px) {
+    padding: 2px;
+  }
 }
 
 .investigator-portrait-container {
@@ -222,6 +228,10 @@ h2 {
   overflow: hidden;
   border-radius: 5px;
   box-shadow: 1px 1px 6px rgba(0, 0, 0, 0.45);
+  @media (max-width: 768px) {
+    width: 36px;
+    height: 36px;
+  }
 
   &.survivor {
     border: 3px solid var(--survivor-extra-dark);
@@ -250,6 +260,9 @@ h2 {
 
 .investigator-portrait {
   width: 150px;
+  @media (max-width: 768px) {
+    width: 108px;
+  }
 }
 
 .game-subdetails {
@@ -271,6 +284,9 @@ h2 {
   flex: 1;
   position: relative;
   gap: 10px;
+  @media (max-width: 768px) {
+    gap: 0;
+  }
 
   h2 {
     color: var(--title);
@@ -287,6 +303,9 @@ h2 {
   display: flex;
   padding: 10px;
   flex: 1;
+  @media (max-width: 768px) {
+    padding: 4px 8px;
+  }
 }
 
 
@@ -316,7 +335,8 @@ h2 {
     font-size: 0.8em;
     align-items: flex-start;
     img { width: 20px; height: auto; }
-    gap: 10px;
+    gap: 5px;
+    padding: 6px 10px;
   }
 
   * {
@@ -378,41 +398,6 @@ h2 {
   text-transform: uppercase;
 }
 
-.delete-buttons {
-  display: flex;
-  gap: 5px;
-
-  button {
-    border: 0;
-    padding: 5px 10px;
-    border-radius: 3px;
-  }
-
-  .delete-button {
-    background-color: var(--delete);
-  }
-}
-
-.slide-leave-active ,
-.slide-enter-active {
-  transition: all 0.3s linear;
-}
-
-.slide-enter-active {
-  transition-delay: 0.2s;
-}
-
-.slide-enter-to,
-.slide-leave-from {
-  max-width: 1000px;
-  opacity: 1;
-}
-
-.slide-enter-from, .slide-leave-to {
-  overflow: hidden;
-  max-width: 0;
-  opacity: 0;
-}
 
 .solo {
   color: rgba(255, 255, 255, 0.5);

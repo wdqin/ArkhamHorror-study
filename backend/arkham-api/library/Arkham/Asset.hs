@@ -1507,6 +1507,28 @@ allAssets =
       , SomeAssetCard accursedCapeShroudOfChaos
       , SomeAssetCard andrePatelMadeForTheSpotlight
       , SomeAssetCard rocketShipRattlingWithEnergy
+      , -- Tommy Muldoon
+        SomeAssetCard becky2
+      , SomeAssetCard policeDog
+      , SomeAssetCard rookieCop
+      , SomeAssetCard serviceRevolver
+      , SomeAssetCard protectiveVest
+      , SomeAssetCard policeDog1
+      , SomeAssetCard m1911Officer2
+      , SomeAssetCard detectiveSherman3
+      , SomeAssetCard endurance3
+      , SomeAssetCard protectiveVest4
+      , SomeAssetCard thompsonSubmachineGun5
+      , -- André Patel
+        SomeAssetCard centerStage
+      , SomeAssetCard fame
+      , SomeAssetCard theGrapevine
+      , SomeAssetCard extravagantRing
+      , SomeAssetCard marcusSengstacke
+      , SomeAssetCard polishedCane
+      , SomeAssetCard theGrapevine2
+      , SomeAssetCard marcusSengstacke2
+      , SomeAssetCard silverTongue3
       , -- Misc
         SomeAssetCard courage
       ]

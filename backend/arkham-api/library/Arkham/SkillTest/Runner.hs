@@ -344,7 +344,8 @@ instance RunMessage SkillTest where
           ]
       pure $ s & toResolveChaosTokensL .~ mempty & resolvedChaosTokensL <>~ skillTestToResolveChaosTokens
     PassSkillTest -> do
-      pushAll [CheckAllAdditionalCommitCosts, Do PassSkillTest]
+      push $ Do PassSkillTest
+      when (skillTestStep < SkillTestFastWindow2) $ push CheckAllAdditionalCommitCosts
       pure s
     Do PassSkillTest -> do
       modifiedSkillValue' <- totalModifiedSkillValue s
@@ -373,7 +374,8 @@ instance RunMessage SkillTest where
       push $ SkillTestResults results
       pure $ s' & resultL .~ SucceededBy NonAutomatic n
     FailSkillTest -> do
-      pushAll [CheckAllAdditionalCommitCosts, Do FailSkillTest]
+      push $ Do FailSkillTest
+      when (skillTestStep < SkillTestFastWindow2) $ push CheckAllAdditionalCommitCosts
       pure s
     Do FailSkillTest -> do
       resultsData <- autoFailSkillTestResultsData s

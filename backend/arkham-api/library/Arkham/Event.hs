@@ -808,6 +808,29 @@ allEvents =
       , SomeEventCard leadingLadyFemmeFatale
       , SomeEventCard leadingLadyEnchantress
       , SomeEventCard leadingLadyFinalGirl
+      , -- Tommy Muldoon
+        SomeEventCard makeEmSing
+      , SomeEventCard bounty
+      , SomeEventCard customGrip
+      , SomeEventCard ironSights
+      , SomeEventCard physicalFitness
+      , SomeEventCard restrained
+      , SomeEventCard stakeout
+      , SomeEventCard extendedBarrel1
+      , SomeEventCard onTheBeat1
+      , SomeEventCard physicalFitness2
+      , SomeEventCard stockAmmoReload2
+      , SomeEventCard stakeout3
+      , -- André Patel
+        SomeEventCard cleanSweep
+      , SomeEventCard payYourDues
+      , SomeEventCard quickExit
+      , SomeEventCard aSuddenFall
+      , SomeEventCard rightUnderTheirNoses
+      , SomeEventCard cleanSweep2
+      , SomeEventCard quickExit2
+      , SomeEventCard aSuddenFall2
+      , SomeEventCard rightUnderTheirNoses3
       , -- Promo
         -- The Dirge of Reason
         SomeEventCard mysteriesRemain

@@ -1,10 +1,10 @@
 <script lang="ts" setup>
 import { watch, ref, computed } from 'vue';
 import { fetchCards } from '@/arkham/api';
-import { localizeArkhamDBBaseUrl } from '@/arkham/helpers';
 import { useRouter, useRoute, LocationQueryValue } from 'vue-router';
 import * as Arkham from '@/arkham/types/CardDef';
-import CardImage from '@/arkham/components/CardImage.vue';
+import CardListView from '@/arkham/components/CardListView.vue';
+import CardImageView from '@/arkham/components/CardImageView.vue';
 import sets from '@/arkham/data/sets.json'
 import cycles from '@/arkham/data/cycles.json'
 import { shallowRef } from 'vue';
@@ -13,6 +13,64 @@ import { useDbCardStore, ArkhamDBCard } from '@/stores/dbCards'
 enum View {
   Image = "IMAGE",
   List = "LIST",
+}
+
+const CHAPTER_2_CYCLES = new Set([12, 61])
+
+const SET_FONT_CHARS: Record<string, string> = {
+  // CHAPTER 1
+  // Cycle 1 — Core
+  core:      '\uEA9F', rcode:     '\uEA9F',
+  // Cycle 2 — The Dunwich Legacy
+  dwl:       '\u0049', tmm:       '\uEA6E', tece:      '\uEA6F',
+  bota:      '\uEA70', uau:       '\uEA71', wda:       '\uEA72', litas:     '\uEA73',
+  // Cycle 3 — The Path to Carcosa
+  ptc:       '\u0047', eotp:      '\uEA4D', tuo:       '\uEA4E',
+  apot:      '\uEA4F', tpm:       '\uEA50', bsr:       '\uEA51', dca:       '\uEA54',
+  // Cycle 4 — The Forgotten Age
+  tfa:       '\u0045', tof:       '\uE9FA', tbb:       '\uE9FB',
+  hote:      '\uE9FE', tcoa:      '\uE9FF', tdoy:      '\uEA00', sha:       '\uEA01',
+  // Cycle 5 — The Circle Undone
+  tcu:       '\u0043', tsn:       '\uE9D6', wos:       '\uE9D7',
+  fgg:       '\uE9D8', uad:       '\uE9D9', icc:       '\uE9DA', bbt:       '\uE9DB',
+  // Cycle 6 — The Dream-Eaters
+  tde:       '\u0042', sfk:       '\uE9A4', tsh:       '\uE9A5',
+  dsm:       '\uE9A6', pnr:       '\uE9A7', wgd:       '\uE9A8', woc:       '\uE9A9',
+  // Cycle 7 — The Innsmouth Conspiracy
+  tic:       '\u0041', itd:       '\uE99D', def:       '\uE99E',
+  hhg:       '\uE99F', lif:       '\uE9A0', lod:       '\uE9A1', itm:       '\uE9A2',
+  // Cycle 8 — The Edge of the Earth
+  eoep:      '\uE977', eoec:      '\uE978',
+  // Cycle 9 — The Scarlet Keys
+  tskp:      '\uE937', tskc:      '\uE938',
+  // Cycle 10 — The Feast of Hemloch Vale
+  fhvp:      '\uE9B9', fhvc:      '\uE9BA',
+  // Cycle 11 — The Drowned City
+  tdcp:      '\uE936', tdcc:      '\uE92E',
+  // Cycle 12 — Core 2026
+  core2026:  '\uE900',
+  // Cycle 50 — Return to...
+  rtnotz:    '\u0058', rtdwl:     '\u004A', rtptc:     '\u0048',
+  rttfa:     '\u0046', rttcu:     '\u0044',
+  // Cycle 60 — Investigator Starter Decks
+  nat:       '\u004B', har:       '\u004D', win:       '\u004F',
+  jac:       '\u004E', ste:       '\u0050',
+  // Cycle 61 — Investigator Starter Decks (Chapter 2)
+  tom:       '\uE918',
+  and:       '\uE91B',
+  // Cycle 70 — Side Stories
+  cotr:      '\u0051', coh:       '\uEA24', lol:       '\u0053',
+  guardians: '\u0054', hotel:     '\u0055', blob:      '\u0056',
+  wog:       '\uEA3B', mtt:       '\uEA47', faf:       '\uEA42',
+  blbe:      '\uEA4A', tmg:       '\uEA1F', ff:        '\uEA8B',
+  // Cycle 80 — Promotional
+  hoth:      '\uEA20', tdor:      '\uEA20', iotv:      '\uEA20', tftbw:     '\uEA20',
+  tdg:       '\uEA20', bob:       '\uEA20', dre:       '\uEA20', promo:     '\uEA20',
+  // Cycle 90 — Parallel
+  rod:       '\uEA36', aon:       '\uEA37', bad:       '\uEA38', btb:       '\uEA39',
+  rtr:       '\uEA3A', otr:       '\uEA1E', ltr:       '\uEA48', ptr:       '\uEA1E',
+  rop:       '\uEA49', hfa:       '\uEA1E', aof:       '\uEA1E', pap:       '\uEA1E',
+  ee:        '\uEA8E',
 }
 
 const toView = (view: string | LocationQueryValue[]): View => {
@@ -31,17 +89,48 @@ const queryText = route.query.q ? route.query.q.toString() : "e:core"
 const allCards = shallowRef<Arkham.CardDef[] | null>(null)
 const query = ref<string>(queryText)
 const view = ref(route.query.view? toView(route.query.view) : View.List)
+const activeChapter = ref<number>(route.query.chapter ? parseInt(route.query.chapter.toString()) : 1)
 
 const includeEncounter = computed(() => route.query.includeEncounter === "true")
 const store = useDbCardStore()
 
+const CACHE_KEY_PREFIX = 'arkham_cards_cache_'
+const CACHE_VERSION = 'v1'
+const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+
+const getCachedCards = (withEncounter: boolean): Arkham.CardDef[] | null => {
+  const key = `${CACHE_KEY_PREFIX}${CACHE_VERSION}_${withEncounter}`
+  try {
+    const cached = sessionStorage.getItem(key)
+    if (cached) {
+      const { cards, timestamp } = JSON.parse(cached)
+      if (Date.now() - timestamp < CACHE_TTL_MS) return cards
+    }
+  } catch { /* ignore */ }
+  return null
+}
+
+const setCachedCards = (cards: Arkham.CardDef[], withEncounter: boolean) => {
+  const key = `${CACHE_KEY_PREFIX}${CACHE_VERSION}_${withEncounter}`
+  try {
+    sessionStorage.setItem(key, JSON.stringify({ cards, timestamp: Date.now() }))
+  } catch { /* ignore quota errors */ }
+}
+
 const fetchData = async () => {
+  const cached = getCachedCards(includeEncounter.value)
+  if (cached) {
+    allCards.value = cached
+    return
+  }
   fetchCards(includeEncounter.value).then(async (response) => {
-    allCards.value = response.sort((a, b) => {
+    const sorted = response.sort((a, b) => {
       if (a.art < b.art) return -1
       if (a.art > b.art) return 1
       return 0
     })
+    setCachedCards(sorted, includeEncounter.value)
+    allCards.value = sorted
   })
 }
 
@@ -85,33 +174,41 @@ watch(() => view.value, (newView) => {
   router.push({ name: 'Cards', query: { ...route.query, view: fromView(newView) }})
 })
 
+watch(() => activeChapter.value, (newChapter) => {
+  router.push({ name: 'Cards', query: { ...route.query, chapter: newChapter === 1 ? undefined : String(newChapter) }})
+})
+
 watch(() => allCards.value, () => {
   const language = localStorage.getItem('language') || 'en'
   if (language === 'en') return
   if (!allCards.value) return
-  
+
   for (const card of allCards.value) {
     const match: ArkhamDBCard | null = store.getDbCard(card.art)
     if (!match) continue
-    
+
     // Name
     card.name.title = match.name
     if (match.subname) card.name.subtitle = match.subname
-    
+
     // Class
     if (match.faction_name && card.classSymbols.length > 0) card.classSymbols[0] = match.faction_name
     if (match.faction2_name && card.classSymbols.length > 1) {
       card.classSymbols[1] = match.faction2_name
       if (match.faction3_name && card.classSymbols.length > 2) card.classSymbols[2] = match.faction3_name
     }
-    
+
     // Type
     card.cardType = match.type_name
-    
+
     // Traits
     if (match.traits) card.cardTraits = match.traits.split('.').filter(item => item != "" && item != " ")
   }
 })
+
+const chapter1Cycles = computed(() => cycles.filter((c) => !CHAPTER_2_CYCLES.has(c.cycle)))
+const chapter2Cycles = computed(() => cycles.filter((c) => CHAPTER_2_CYCLES.has(c.cycle)))
+const displayedCycles = computed(() => activeChapter.value === 2 ? chapter2Cycles.value : chapter1Cycles.value)
 
 const cycleCount = (cycle: CardCycle) => {
   if (!allCards.value) return 0
@@ -180,7 +277,7 @@ const cards = computed(() => {
     if (encounterSets.length > 0) {
       const match: ArkhamDBCard | null = store.getDbCard(c.art)
       if (!match) return false
-      return encounterSets.includes(match.encounter_code)
+      return match.encounter_code !== undefined && encounterSets.includes(match.encounter_code)
     }
 
     if (text.length > 0) {
@@ -306,22 +403,6 @@ const cardName = (card: Arkham.CardDef) => {
   return `${card.name.title}${subtitle}`
 }
 
-const cardCost = (card: Arkham.CardDef) => {
-  if (card.cost?.tag === "StaticCost") {
-    return card.cost.contents
-  }
-
-  if (card.cost?.tag === "DynamicCost") {
-    return -2
-  }
-
-  if (card.cost?.tag === "DiscardAmountCost") {
-    return -2
-  }
-
-  return null
-}
-
 const cardType = (card: Arkham.CardDef) => {
   switch(card.cardType) {
     case "PlayerTreacheryType":
@@ -333,63 +414,26 @@ const cardType = (card: Arkham.CardDef) => {
   }
 }
 
-const cardTraits = (card: Arkham.CardDef) => {
-  if (card.cardTraits.length === 0) { return '' }
-  return `${card.cardTraits.join('. ')}.`
-}
-
-const levelText = (card: Arkham.CardDef) => {
-  if (!card.level) return ''
-  if (card.level === 0) return ''
-  return ` (${card.level})`
-}
-
-const cardIcons = (card: Arkham.CardDef) => {
-  return card.skills.map((s) => {
-    if(s.tag === "SkillIcon") {
-      switch(s.contents) {
-        case "SkillWillpower": return "willpower"
-        case "SkillIntellect": return "intellect"
-        case "SkillCombat": return "combat"
-        case "SkillAgility": return "agility"
-        default: return "unknown"
-      }
-    }
-
-    if (s.tag == "WildIcon" || s.tag == "WildMinusIcon") {
-      return "wild"
-    }
-
-    return "unknown"
-  })
-}
-
 const cardSet = (card: Arkham.CardDef) => {
   const cardCode = parseInt(card.art)
   return sets.find((s) => cardCode >= s.min && cardCode <= s.max)
 }
 
-const cardSetText = (card: Arkham.CardDef) => {
-  const setNumber = parseInt(card.art.slice(2,))
-  const language = localStorage.getItem('language') || 'en'
-  var setName = ''
-  
-  if (language !== 'en') {
-    const match: ArkhamDBCard | null = store.getDbCard(card.art)
-    if (match) setName = match.pack_name
-  }
-  
-  if (!setName) {
-    const set = cardSet(card)
-    if (set !== null && set !== undefined) setName = set.name
-  }
-  
-  if (setName) return `${setName} ${setNumber % 500}`
-  else return "Unknown"
-}
-
 const cycleSets = (cycle: CardCycle) => {
   return sets.filter((s) => s.cycle == cycle.cycle)
+}
+
+const CYCLE_ICON_OVERRIDES: Record<number, string> = {
+  50: 'core',  // Return to...
+  60: 'core',  // Investigator Starter Decks
+  61: 'core',  // Investigator Starter Decks (Chapter 2)
+  70: 'core',  // Side Stories
+  90: 'otr',   // Parallel — On the Road Again
+}
+
+const cycleIconCode = (cycle: CardCycle): string => {
+  if (CYCLE_ICON_OVERRIDES[cycle.cycle]) return CYCLE_ICON_OVERRIDES[cycle.cycle]
+  return cycleSets(cycle)[0]?.code ?? ''
 }
 
 const setCycle = (cycle: CardCycle) => {
@@ -406,60 +450,69 @@ const toggleIncludeEncounter = () => {
   const includeEncounter = route.query.includeEncounter === 'true'
   router.push({ name: 'Cards', query: { ...route.query, includeEncounter: !includeEncounter ? 'true' : undefined }})
 }
+
+const showSidebar = ref(false)
 </script>
 
 <template>
   <div class="container">
-    <div class="cycles">
-      <ol>
-        <li v-for="cycle in cycles" :key="cycle.code">
-          <a href="#" @click.prevent="setCycle(cycle)">{{cycle.name}}</a>{{cycleCountText(cycle)}}
-          <ol>
-            <li v-for="set in cycleSets(cycle)" :key="set.code">
-              <a href="#" @click.prevent="setSet(set)">{{set.name}}</a>{{setCountText(set)}}
-            </li>
-          </ol>
-        </li>
-      </ol>
+    <div class="sidebar-overlay" :class="{ visible: showSidebar }" @click="showSidebar = false"></div>
+    <div class="sidebar" :class="{ open: showSidebar }">
+      <button class="sidebar-close" @click="showSidebar = false"><font-awesome-icon icon="times" /></button>
+      <div class="chapter-tabs">
+        <button
+          :class="['chapter-tab', { active: activeChapter === 1 }]"
+          @click="activeChapter = 1"
+        >Chapter 1</button>
+        <button
+          :class="['chapter-tab', { active: activeChapter === 2 }]"
+          @click="activeChapter = 2"
+        >Chapter 2</button>
+      </div>
+      <nav class="cycles">
+        <ol>
+          <li v-for="cycle in displayedCycles" :key="cycle.code">
+            <div class="nav-row">
+              <i v-if="SET_FONT_CHARS[cycleIconCode(cycle)]" class="set-icon-font">{{ SET_FONT_CHARS[cycleIconCode(cycle)] }}</i>
+              <img v-else-if="cycleIconCode(cycle)" class="set-icon" :src="`/img/arkham/encounter-sets/${cycleIconCode(cycle)}.png`" :alt="cycle.name" />
+              <a href="#" @click.prevent="setCycle(cycle)">{{cycle.name}}</a>
+              <span class="count">{{cycleCountText(cycle)}}</span>
+            </div>
+            <ol>
+              <li v-for="set in cycleSets(cycle)" :key="set.code">
+                <div class="nav-row nav-row--sub">
+                  <i v-if="SET_FONT_CHARS[set.code]" class="set-icon-font">{{ SET_FONT_CHARS[set.code] }}</i>
+                  <img v-else class="set-icon" :src="`/img/arkham/encounter-sets/${set.code}.png`" :alt="set.name" />
+                  <a href="#" @click.prevent="setSet(set)">{{set.name}}</a>
+                  <span class="count">{{setCountText(set)}}</span>
+                </div>
+              </li>
+            </ol>
+          </li>
+        </ol>
+      </nav>
     </div>
     <div class="results">
       <header>
+        <button class="sidebar-toggle" @click="showSidebar = !showSidebar" title="Browse sets">
+          <font-awesome-icon class="toggle-arrow" icon="chevron-right" />
+          <font-awesome-icon icon="book" />
+        </button>
         <form @submit.prevent="setFilter">
-          <input v-model="query" />
+          <input v-model="query" placeholder="Search cards..." />
           <button type="submit"><font-awesome-icon icon="search" /></button>
         </form>
-        <button @click.prevent="view = View.List" :class="{ pressed: view == View.List }"><font-awesome-icon icon="list" /></button>
-        <button @click.prevent="view = View.Image" :class="{ pressed: view == View.Image }"><font-awesome-icon icon="image" /></button>
-        <div>
-          <label for="include-encounter">
-            <input type="checkbox" @click="toggleIncludeEncounter" :checked="includeEncounter" id="include-encounter" />
-            Include Encounter
-          </label>
+        <div class="view-controls">
+          <button @click.prevent="view = View.List" :class="{ active: view == View.List }" title="List view"><font-awesome-icon icon="list" /></button>
+          <button @click.prevent="view = View.Image" :class="{ active: view == View.Image }" title="Image view"><font-awesome-icon icon="image" /></button>
         </div>
+        <label class="encounter-toggle">
+          <input type="checkbox" @click="toggleIncludeEncounter" :checked="includeEncounter" id="include-encounter" />
+          <span>Include Encounter</span>
+        </label>
       </header>
-      <div class="cards" v-if="view == View.Image">
-        <a v-for="card in cards" :key="card.art" target="_blank" :href="`${localizeArkhamDBBaseUrl()}/card/${card.art}`">
-          <CardImage :card="card" />
-        </a>
-      </div>
-      <table class="box" v-if="view == View.List">
-        <thead>
-          <tr><th>Name</th><th>Class</th><th>Cost</th><th>Type</th><th>Icons</th><th>Traits</th><th>Set</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="card in cards" :key="card.art">
-            <td><a target="_blank" :href="`${localizeArkhamDBBaseUrl()}/card/${card.art}`">{{cardName(card)}}{{levelText(card)}}</a></td>
-            <td>{{card.classSymbols.join(', ')}}</td>
-            <td>{{cardCost(card)}}</td>
-            <td>{{cardType(card)}}</td>
-            <td>
-              <i v-for="(icon, index) in cardIcons(card)" :key="index" :class="[icon, `${icon}-icon`]" ></i>
-            </td>
-            <td>{{cardTraits(card)}}</td>
-            <td>{{cardSetText(card)}}</td>
-          </tr>
-        </tbody>
-      </table>
+      <CardImageView v-if="view == View.Image" :cards="cards" />
+      <CardListView v-if="view == View.List" :cards="cards" />
     </div>
   </div>
 </template>
@@ -467,196 +520,304 @@ const toggleIncludeEncounter = () => {
 <style scoped>
 .container {
   display: flex;
-  height: calc(100% - 40px);
+  height: calc(100vh - var(--nav-height));
   max-width: unset;
   margin: 0;
-}
-
-.results {
-  flex: 1;
-  overflow-y: auto;
-}
-.card {
-  margin: 10px;
-  border-radius: 10px;
-}
-
-.cards {
-  overflow-y: auto;
-  display: grid;
-  grid-template-columns: repeat(auto-fit,minmax(250px, 1fr));
-  padding: 10px;
-
-  &:deep(.card-container) {
-    width: unset;
-    max-width: 300px;
+  overflow: hidden;
+  @media (max-width: 768px) {
+    flex-direction: column;
   }
 }
 
-.willpower {
-  font-size: 1.5em;
-  margin: 0 2px;
-  color: var(--willpower);
+/* ── Sidebar ────────────────────────────────────────────── */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  width: clamp(200px, 18vw, 320px);
+  border-right: 1px solid rgba(255,255,255,0.08);
+  overflow: hidden;
+  @media (max-width: 768px) {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 280px;
+    max-height: unset;
+    border-right: 1px solid rgba(255,255,255,0.12);
+    background: var(--background);
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    overflow-y: auto;
+    &.open { transform: translateX(0); }
+  }
 }
 
-.intellect {
-  font-size: 1.5em;
-  margin: 0 2px;
-  color: var(--intellect);
+.sidebar-overlay {
+  display: none;
+  @media (max-width: 768px) {
+    &.visible {
+      display: block;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 49;
+    }
+  }
 }
 
-.combat {
-  font-size: 1.5em;
-  margin: 0 2px;
-  color: var(--combat);
+.sidebar-close {
+  display: none;
+  @media (max-width: 768px) {
+    display: flex;
+    align-self: flex-end;
+    margin: 8px 8px 0 auto;
+    background: transparent;
+    border: none;
+    color: #777;
+    cursor: pointer;
+    padding: 6px;
+    font-size: 1.1em;
+    flex-shrink: 0;
+    &:hover { color: #ccc; }
+  }
 }
 
-.agility {
-  font-size: 1.5em;
-  margin: 0 2px;
-  color: var(--agility);
+.sidebar-toggle {
+  display: none;
+  @media (max-width: 768px) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    height: 32px;
+    padding: 0 8px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px;
+    color: #aaa;
+    cursor: pointer;
+    flex-shrink: 0;
+    &:hover { background: rgba(255,255,255,0.14); color: #eee; }
+  }
 }
 
-.wild {
-  font-size: 1.5em;
-  margin: 0 2px;
-  color: var(--wild);
+.toggle-arrow {
+  display: none;
+  @media (max-width: 768px) {
+    display: inline-block;
+    transform: rotate(180deg);
+    font-size: 0.65em;
+    opacity: 0.7;
+  }
 }
 
-a {
-  font-weight: bold;
-  color: var(--spooky-green);
-  text-decoration: none;
+.chapter-tabs {
+  display: flex;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  flex-shrink: 0;
+}
+
+.chapter-tab {
+  flex: 1;
+  padding: 10px 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #888;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+
   &:hover {
-    color: var(--spooky-green)-light;
+    color: #ccc;
+  }
+
+  &.active {
+    color: var(--spooky-green);
+    border-bottom-color: var(--spooky-green);
   }
 }
 
 .cycles {
-  color: #CECECE;
+  flex: 1;
   overflow-y: auto;
+  padding: 8px 0 16px;
+
+  ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  > ol > li + li {
+    margin-top: 5px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+}
+
+.nav-row {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  padding: 0 10px 0 14px;
+
+  a {
+    flex: 1;
+    min-width: 0;
+    padding: 5px 4px 5px 0;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #ccc;
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 0.12s;
+
+    &:hover { color: var(--spooky-green); }
+  }
+
+  .count {
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    color: #555;
+    white-space: nowrap;
+  }
+}
+
+.set-icon-font {
+  display: inline-block;
+  text-align: center;
+  font-family: "ArkhamEncounters";
+  font-style: normal;
+  font-size: 14px;
+  line-height: 1;
+  width: 16px;
+  flex-shrink: 0;
+  margin-right: 4px;
+  color: #ccc;
+}
+
+.set-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  object-fit: contain;
+  margin-right: 4px;
+  filter: brightness(0) invert(0.8);
+}
+
+.nav-row--sub {
+  padding-left: 26px;
+
+  a {
+    padding-top: 3px;
+    padding-bottom: 3px;
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: #999;
+  }
+}
+
+/* ── Results panel ──────────────────────────────────────── */
+
+.results {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  margin-block: 10px;
-}
-
-button {
-  border: 0;
-}
-
-i {
-  font-style: normal;
-}
-
-.pressed {
-  background-color: #777;
-  color: white;
+  overflow: hidden;
 }
 
 header {
-  z-index: 1;
-  position: sticky;
-  position: -webkit-sticky;
-  width: 100%;
-  top: -1px;
-  background: color-mix(in srgb, var(--background) 90%, transparent);
   display: flex;
   align-items: center;
-  color: white;
-  padding: 10px 20px 15px 20px;
-  border-bottom-left-radius: 10px;
-  border-bottom-right-radius: 10px;
-
-  input {
-    margin-right: 10px;
-  }
-
-  input[type=checkbox] {
-    margin-left: 20px;
-  }
-
-  button {
-    padding: 5px;
-  }
+  gap: 10px;
+  flex-shrink: 0;
+  padding: 10px 16px;
+  background: color-mix(in srgb, var(--background) 92%, transparent);
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  backdrop-filter: blur(6px);
+  z-index: 1;
 
   form {
-    margin-right: 20px;
-  }
+    display: flex;
+    align-items: center;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    overflow: hidden;
+    flex: 1;
+    max-width: 360px;
 
-  form button {
-    border: 0;
-    height: 100%;
-    padding: 5px;
-  }
+    input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      padding: 6px 10px;
+      color: #ddd;
+      font-size: 0.88rem;
 
-  form input {
-    outline: none;
-    padding: 5px;
-    border: 0;
-    height: 100%;
-    margin: 0;
-  }
-}
+      &::placeholder { color: #555; }
+    }
 
-#include-encounter {
-  display: inline;
-}
+    button {
+      background: transparent;
+      border: none;
+      padding: 6px 10px;
+      color: #777;
+      cursor: pointer;
+      transition: color 0.12s;
 
-table.box {
-  width: calc(100% - 40px);
-  padding: 0;
-  margin: 20px;
-  margin-top: 0;
-  border-radius: 10px;
-  border-spacing: 0;
-  background-color: rgba(255,255,255,0.05);
-  box-shadow: 1px 1px 6px rgba(0, 0, 0, 0.45);
-}
-
-th {
-  text-align: left;
-}
-
-tr td:nth-child(1){
-  padding-left: 20px;
-}
-
-tr th:nth-child(1){
-  padding-left: 20px;
-}
-
-tbody td {
-  padding: 5px;
-}
-
-thead tr th {
-  color: #aaa;
-  background-color: rgba(0, 0, 0, 0.2);
-  padding: 5px 5px;
-
-  &:nth-child(1) {
-    border-top-left-radius: 10px;
-  }
-
-  &:last-child {
-    border-top-right-radius: 10px;
+      &:hover { color: var(--spooky-green); }
+    }
   }
 }
 
-tr {
-  color: #cecece;
-}
+.view-controls {
+  display: flex;
+  gap: 2px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 2px;
 
-tr:nth-child(even) {
-  background-color: rgba(0, 0, 0, 0.1);
-}
+  button {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    padding: 5px 9px;
+    color: #777;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
 
-ol {
-  list-style-position: inside;
-  margin-left: 10px;
-  > li ol {
-    margin-left: 40px;
+    &:hover { color: #ccc; }
+    &.active {
+      background: rgba(255,255,255,0.12);
+      color: #eee;
+    }
   }
 }
+
+.encounter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #999;
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+
+  input[type=checkbox] {
+    accent-color: var(--spooky-green);
+    cursor: pointer;
+  }
+}
+
 </style>

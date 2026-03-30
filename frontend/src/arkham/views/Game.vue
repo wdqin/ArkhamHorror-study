@@ -902,6 +902,15 @@ async function chooseDeck(deckId: string): Promise<void> {
   }
 }
 
+async function chooseDeckList(deckList: object): Promise<void> {
+  if(game.value && !props.spectate) {
+    oldQuestion.value = game.value.question
+    game.value.question = {}
+    processing.value = true
+    send(JSON.stringify({tag: 'DeckListAnswer', deckList, playerId: playerId.value}))
+  }
+}
+
 async function choosePaymentAmounts(amounts: Record<string, number>): Promise<void> {
   if(game.value && !props.spectate) {
     oldQuestion.value = game.value.question
@@ -979,6 +988,7 @@ function debugExport (exportType: ExportType) {
 
 // provides
 provide('chooseDeck', chooseDeck)
+provide('chooseDeckList', chooseDeckList)
 provide('send', send)
 provide('choosePaymentAmounts', choosePaymentAmounts)
 provide('chooseAmounts', chooseAmounts)
@@ -1678,7 +1688,7 @@ header {
       display: none;
       position: absolute;
       z-index: 9999;
-      top: 40px;
+      top: var(--nav-height);
       left: -37px;
       width: 114px;
       height: 36px;

@@ -1,5 +1,6 @@
 module Arkham.Asset.Cards (module Arkham.Asset.Cards, module X) where
 
+import Arkham.Asset.Cards.AndrePatel as X
 import Arkham.Asset.Cards.Core2026 as X
 import Arkham.Asset.Cards.EdgeOfTheEarth as X
 import Arkham.Asset.Cards.NightOfTheZealot as X
@@ -17,6 +18,7 @@ import Arkham.Asset.Cards.TheForgottenAge as X
 import Arkham.Asset.Cards.TheInnsmouthConspiracy as X
 import Arkham.Asset.Cards.ThePathToCarcosa as X
 import Arkham.Asset.Cards.TheScarletKeys as X
+import Arkham.Asset.Cards.TommyMuldoon2 as X
 import Arkham.Card.CardCode
 import Arkham.Card.CardDef
 import Arkham.Prelude
@@ -54,6 +56,15 @@ allPlayerAssetCards =
       , ancientStoneMindsInHarmony4
       , ancientStoneTransientThoughts4
       , andrePatelMadeForTheSpotlight
+      , centerStage
+      , extravagantRing
+      , fame
+      , marcusSengstacke
+      , marcusSengstacke2
+      , polishedCane
+      , silverTongue3
+      , theGrapevine
+      , theGrapevine2
       , annaKaslow4
       , anotherDayAnotherDollar3
       , antikytheraPropheticTimepiece5
@@ -113,6 +124,7 @@ allPlayerAssetCards =
       , beatCop
       , beatCop2
       , becky
+      , becky2
       , berettaM19184
       , bestowResolve2
       , bewitching3
@@ -237,6 +249,7 @@ allPlayerAssetCards =
       , deloresGadling
       , dendromorphosis
       , detectivesColt1911s
+      , detectiveSherman3
       , deVermisMysteriis2
       , devilFriendOrFoe2
       , dialOfAncientsSignsOfAberration4
@@ -323,6 +336,7 @@ allPlayerAssetCards =
       , encyclopedia
       , encyclopedia2
       , endurance
+      , endurance3
       , engineer
       , eonChart1
       , eonChart4
@@ -559,6 +573,7 @@ allPlayerAssetCards =
       , lupara3
       , m1903Hammerless
       , m1911
+      , m1911Officer2
       , m1918Bar4
       , machete
       , madameLabranche
@@ -677,6 +692,8 @@ allPlayerAssetCards =
       , pocketMultiTool
       , pocketTelescope
       , policeBadge2
+      , policeDog
+      , policeDog1
       , powderOfIbnGhazi
       , preciousMementoFromAFormerLife4
       , preciousMementoFromAFutureLife4
@@ -693,6 +710,8 @@ allPlayerAssetCards =
       , prophesiaeProfanaAtlasOfTheUnknowable5
       , prophetic3
       , protectiveGear2
+      , protectiveVest
+      , protectiveVest4
       , protectiveIncantation1
       , prudenceDouglas
       , purifyingCorruption4
@@ -741,6 +760,7 @@ allPlayerAssetCards =
       , rodOfCarnamagosScepterOfTheMadSeer2
       , rolands38Special
       , rolands38SpecialAdvanced
+      , rookieCop
       , runicAxe
       , ruthWestmacottDarkRevelations
       , sacredCovenant2
@@ -774,6 +794,7 @@ allPlayerAssetCards =
       , segmentOfOnyx1
       , sergeantMonroe
       , servantOfBrassDaemonaicVassal
+      , serviceRevolver
       , shardsOfTheVoid3
       , sharpRhetoric
       , sharpshooter3
@@ -918,6 +939,7 @@ allPlayerAssetCards =
       , thirtyTwoColt2
       , thomasDawsonSoldierInANewWar
       , thomasOlney
+      , thompsonSubmachineGun5
       , tidalMemento
       , timewornBrand5
       , tokenOfFaith

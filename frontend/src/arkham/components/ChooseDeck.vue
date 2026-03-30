@@ -6,17 +6,65 @@ import { fetchDecks } from '@/arkham/api'
 import { imgsrc } from '@/arkham/helpers'
 import * as Arkham from '@/arkham/types/Deck'
 import {deckClass} from '@/arkham/types/Deck'
+import type { ArkhamDbDecklist } from '@/arkham/types/Deck'
 import type { Investigator } from '@/arkham/types/Investigator'
 import Question from '@/arkham/components/Question.vue';
 import NewDeck from '@/arkham/components/NewDeck.vue'
+import DeckToolbar from '@/arkham/components/DeckToolbar.vue'
 
 const decks = ref<Arkham.Deck[]>([])
 const ready = ref(false)
 const deckId = ref<string | null>(null)
+const unsavedDeckList = ref<ArkhamDbDecklist | null>(null)
 const createdPortrait = ref<string | null>(null)
 
-type DeckType = "UseExistingDeck" | "LoadNewDeck"
+type DeckType = "UseExistingDeck" | "LoadNewDeck" | "UnsavedDeck"
 const deckType = ref<DeckType>("UseExistingDeck")
+
+const searchText = ref('')
+const filterClasses = ref<string[]>([])
+const sortBy = ref<'name' | 'class'>('name')
+const CLASS_ORDER: Record<string, number> = {
+  guardian: 0, seeker: 1, rogue: 2, mystic: 3, survivor: 4, neutral: 5
+}
+const allClasses = ["guardian", "seeker", "rogue", "mystic", "survivor", "neutral"]
+
+function deckInvestigatorCode(deck: Arkham.Deck): string {
+  if (deck.list.meta) {
+    try {
+      const result = JSON.parse(deck.list.meta)
+      if (result?.alternate_front) return result.alternate_front.replace('c', '')
+    } catch (e) {}
+  }
+  return deck.list.investigator_code.replace('c', '')
+}
+
+function deckTaboo(deck: Arkham.Deck): string | null {
+  return deck.list.taboo_id ? displayTabooId(deck.list.taboo_id) : null
+}
+
+const filteredDecks = computed(() => {
+  let result = decks.value.filter((deck) => {
+    const cls = deckClass(deck)
+    const matchesClass = filterClasses.value.length === 0 ||
+      filterClasses.value.some((k) => cls[k])
+    const matchesSearch = !searchText.value ||
+      deck.name.toLowerCase().includes(searchText.value.toLowerCase())
+    return matchesClass && matchesSearch
+  })
+
+  if (sortBy.value === 'name') {
+    result = [...result].sort((a, b) => a.name.localeCompare(b.name))
+  } else if (sortBy.value === 'class') {
+    result = [...result].sort((a, b) => {
+      const ca = allClasses.find(k => (deckClass(a) as any)[k]) ?? 'neutral'
+      const cb = allClasses.find(k => (deckClass(b) as any)[k]) ?? 'neutral'
+      return (CLASS_ORDER[ca] ?? 5) - (CLASS_ORDER[cb] ?? 5)
+    })
+  }
+
+  return result
+})
 
 const props = defineProps<{
   game: Game
@@ -24,6 +72,7 @@ const props = defineProps<{
 }>()
 
 const chooseDeck = inject<(deckId: string) => Promise<void>>('chooseDeck')
+const chooseDeckList = inject<(deckList: ArkhamDbDecklist) => Promise<void>>('chooseDeckList')
 const question = computed(() => props.game.question[props.playerId])
 
 const questionLabel = computed(() => {
@@ -38,7 +87,14 @@ async function setPortrait(src: string) {
 async function addDeck(d: Arkham.Deck) {
   decks.value = [...decks.value, d]
   deckId.value = d.id
-  deckType.value = "UseExistingDeck"
+  unsavedDeckList.value = null
+  await choose()
+}
+
+async function addUnsavedDeck(dl: ArkhamDbDecklist) {
+  unsavedDeckList.value = dl
+  deckId.value = null
+  deckType.value = "UnsavedDeck"
 }
 
 const error = computed(() => {
@@ -70,14 +126,6 @@ const error = computed(() => {
   return null
 })
 
-const disabled = computed(() => {
-  if(!deckId.value) {
-    return true
-  }
-
-  return error.value !== null
-})
-
 const investigators = computed(() => props.game.investigators)
 
 fetchDecks().then((result) => {
@@ -93,11 +141,19 @@ const emit = defineEmits(['choose'])
 const chooseChoice = (idx: number) => emit('choose', idx)
 
 async function choose() {
-  if (deckId.value && error.value === null) {
+  if (unsavedDeckList.value && chooseDeckList) {
+    await chooseDeckList(unsavedDeckList.value)
+  } else if (deckId.value && error.value === null) {
     if (chooseDeck) {
       await chooseDeck(deckId.value)
     }
   }
+}
+
+async function selectAndChoose(deck: Arkham.Deck) {
+  deckId.value = deck.id
+  if (error.value !== null) return
+  await choose()
 }
 
 type Player = { tag: "EmptyPlayer", id: string } | { tag: "Chosen", contents: Investigator, id: string }
@@ -130,45 +186,14 @@ const needsReply = computed(() => {
   return question.tag === 'ChooseDeck' || (question.tag === 'QuestionLabel' && question.question.tag === 'ChooseDeck')
 })
 
-const chosenImage = computed(() => {
-  if(!deckId.value) {
-    return null
-  }
 
-  const deck = decks.value.find((d) => d.id === deckId.value)
-  if (!deck) {
-    return null
-  }
-  
-  if (deck.list.meta) {
-    try {
-      const result = JSON.parse(deck.list.meta)
-      if (result && result.alternate_front) {
-        return imgsrc(`portraits/${result.alternate_front}.jpg`)
-      }
-    } catch (e) { console.log("No parse") }
-  }
-
-  return imgsrc(`portraits/${deck.list.investigator_code.replace('c', '')}.jpg`)
-})
-
-const chosenDeckTabooList = computed(() => {
-  if(!deckId.value) {
-    return null
-  }
-
-  const deck = decks.value.find((d) => d.id === deckId.value)
-  if (!deck) return null
-
-  return deck.list.taboo_id ? displayTabooId(deck.list.taboo_id) : null
-})
 
 </script>
 
 <template>
   <div class="container">
     <div class="investigators">
-      <h2>{{$t('create.chooseYourDeck', {s: players.length > 1 ? 's' : ''})}}</h2>
+      <h2 class="page-title">{{$t('create.chooseYourDeck', {s: players.length > 1 ? 's' : ''})}}</h2>
       <div class="portraits">
         <div class="investigator-row" v-for="player in players" :key="player.id">
           <template v-if="player.tag === 'Chosen'">
@@ -186,35 +211,62 @@ const chosenDeckTabooList = computed(() => {
             </div>
           </template>
           <template v-else>
-            <div v-if="chosenImage && player.id == playerId" class="portrait">
-              <img :src="chosenImage" />
-            </div>
-            <div v-else-if="createdPortrait &&  deckType == 'LoadNewDeck'" class="portrait">
-              <img :src="createdPortrait" />
-            </div>
-            <div v-else class="portrait-empty">
-              <img :src="imgsrc('slots/ally.png')" />
-            </div>
             <div v-if="needsReply && player.id == playerId" class="deck-main">
-              <div class="buttons">
+              <div class="deck-tabs">
                 <button @click.prevent="deckType = 'UseExistingDeck'" :class="{ current: deckType == 'UseExistingDeck'}" :disabled="decks.length == 0">
                   {{$t('create.useExistingDeck')}}
                 </button>
-                <button @click.prevent="deckType = 'LoadNewDeck'" :class="{ current: deckType == 'LoadNewDeck'}">
+                <button @click.prevent="deckType = 'LoadNewDeck'" :class="{ current: deckType == 'LoadNewDeck' || deckType == 'UnsavedDeck'}">
                   {{$t('create.loadNewDeck')}}
                 </button>
               </div>
-              <form v-if="deckType == 'UseExistingDeck'" class="choose-deck" @submit.prevent="choose">
-                <select v-model="deckId">
-                  <option disabled :value="null">{{$t('create.selectADeck')}}</option>
-                  <option v-for="deck in decks" :key="deck.id" :value="deck.id" :class="deckClass(deck)">{{deck.name}}</option>
-                </select>
-                <p class="error" v-if="error">{{error}}</p>
-                <button type="submit" :disabled="disabled">{{$t('create.choose')}}</button>
-              </form>
-              <NewDeck v-else @new-deck="addDeck" :no-portrait="true" :set-portrait="setPortrait" />
-              <div v-if="chosenDeckTabooList" class="taboo-list">
-                {{$t('create.tabooList', {tabooList: chosenDeckTabooList})}}
+              <div v-if="deckType == 'UseExistingDeck'" class="deck-picker">
+                <DeckToolbar
+                  compact
+                  search-placeholder="Search…"
+                  v-model:search="searchText"
+                  v-model:filterClasses="filterClasses"
+                  v-model:sortBy="sortBy"
+                />
+                <div class="deck-list">
+                  <div v-if="filteredDecks.length === 0" class="deck-list-empty">No decks match your filters</div>
+                  <div
+                    v-for="deck in filteredDecks"
+                    :key="deck.id"
+                    class="deck-item"
+                    :class="[deckClass(deck), { selected: deckId === deck.id, 'has-error': deckId === deck.id && error }]"
+                    @click.prevent="deckId = deck.id"
+                  >
+                    <img class="deck-item-portrait" :src="imgsrc(`cards/${deckInvestigatorCode(deck)}.avif`)" />
+                    <div class="deck-item-info">
+                      <span class="deck-item-name">{{ deck.name }}</span>
+                      <span v-if="deckTaboo(deck)" class="deck-item-taboo">
+                        <font-awesome-icon icon="book" /> {{ deckTaboo(deck) }}
+                      </span>
+                      <span v-if="deckId === deck.id && error" class="deck-item-error">{{ error }}</span>
+                    </div>
+                    <button class="deck-item-use" @click.stop.prevent="selectAndChoose(deck)" title="Use this deck">
+                      <font-awesome-icon icon="chevron-right" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="load-deck-layout">
+                <div class="load-deck-portrait">
+                  <div v-if="createdPortrait" class="portrait">
+                    <img :src="createdPortrait" />
+                  </div>
+                  <div v-else class="portrait-empty">
+                    <img :src="imgsrc('slots/ally.png')" />
+                  </div>
+                </div>
+                <div class="load-deck-content">
+                  <form v-if="deckType == 'UnsavedDeck'" class="deck-form" @submit.prevent="choose">
+                    <p class="unsaved-deck-name">{{ unsavedDeckList?.name }}</p>
+                    <button type="submit" class="primary-action">{{$t('create.choose')}}</button>
+                  </form>
+                  <NewDeck v-else @new-deck="addDeck" @new-deck-list="addUnsavedDeck" :no-portrait="true" :set-portrait="setPortrait" />
+                </div>
               </div>
             </div>
           </template>
@@ -226,168 +278,6 @@ const chosenDeckTabooList = computed(() => {
 
 
 <style scoped>
-.investigators {
-  width: 100%;
-  color: #FFF;
-  padding: 10px;
-  border-radius: 3px;
-  max-width: 800px;
-  margin-inline: auto;
-  margin-top: 20px;
-
-  h2 {
-    margin: 0;
-    padding: 0;
-    text-transform: uppercase;
-    color: white;
-    margin-bottom: 10px;
-  }
-}
-
-.portraits {
-  --gap: 10px;
-  --columns: 4;
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
-}
-
-.deck-main {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.choose-deck {
-  width: 100%;
-  color: #FFF;
-  border-radius: 3px;
-  button {
-    outline: 0;
-    padding: 15px;
-    background: #6E8640;
-    text-transform: uppercase;
-    color: white;
-    border: 0;
-    width: 100%;
-    &:hover {
-      background: hsl(80, 35%, 32%);
-    }
-  }
-  button[disabled] {
-    background: #999;
-    cursor: not-allowed;
-    &:hover {
-      background: #999;
-    }
-  }
-  input[type=text] {
-    outline: 0;
-    border: 1px solid #000;
-    padding: 15px;
-    background: #F2F2F2;
-    width: 100%;
-    margin-bottom: 10px;
-  }
-  select {
-    outline: 0;
-    border: 1px solid #000;
-    padding: 15px;
-    background: var(--background-dark);
-    width: 100%;
-    margin-bottom: 10px;
-    background-image:
-      linear-gradient(45deg, transparent 50%, gray 50%),
-      linear-gradient(135deg, gray 50%, transparent 50%),
-      linear-gradient(to right, #ccc, #ccc);
-    background-position:
-      calc(100% - 25px) calc(1.3em + 2px),
-      calc(100% - 20px) calc(1.3em + 2px),
-      calc(100% - 3.5em) 0.5em;
-    background-size:
-      5px 5px,
-      5px 5px,
-      1px 2.5em;
-    background-repeat: no-repeat;
-  }
-  a {
-    color: #365488;
-    font-weight: bolder;
-  }
-  p {
-    margin: 0;
-    padding: 0;
-    text-transform: uppercase;
-  }
-}
-
-h2 {
-  color: #656A84;
-  margin-left: 10px;
-  text-transform: uppercase;
-}
-
-input[type=radio] {
-  display: none;
-  /* margin: 10px; */
-}
-
-input[type=radio] + label {
-  display:inline-block;
-  padding: 4px 12px;
-  background-color: hsl(80, 5%, 39%);
-  &:hover {
-    background-color: hsl(80, 15%, 39%);
-  }
-  border-color: #ddd;
-}
-
-input[type=radio]:checked + label {
-  background: #6E8640;
-}
-
-input[type=checkbox] {
-  display: none;
-  /* margin: 10px; */
-}
-
-input[type=checkbox] + label {
-  display:inline-block;
-  padding: 4px 12px;
-  background-color: hsl(80, 5%, 39%);
-  &:hover {
-    background-color: hsl(80, 15%, 39%);
-  }
-
-  border-color: #ddd;
-}
-
-input[type=checkbox]:checked + label {
-  background: #6E8640;
-}
-
-header {
-  display: flex;
-  align-items: center;
-  justify-items: center;
-  align-content: center;
-  justify-content: center;
-}
-
-select::-ms-expand {
-  display: none;
-}
-
-select {
-  appearance: none;
-  -moz-appearance: none;
-  -webkit-appearance: none;
-  &::picker {
-    appearance: none;
-  }
-}
-
 .container {
   background: var(--background);
   width: 100%;
@@ -396,72 +286,52 @@ select {
   margin: 0;
 }
 
-form {
+.investigators {
+  width: 100%;
+  color: #FFF;
+  padding: 10px;
+  border-radius: 3px;
   max-width: 800px;
   margin-inline: auto;
   margin-top: 20px;
 }
 
-.choose-deck {
-  p.error {
-    color: white;
-    background-color: darkred;
-    padding: 10px;
-    text-align: center;
-    margin-bottom: 10px;
-    display: block;
-  }
+.page-title {
+  margin: 0 0 12px 0;
+  padding: 0;
+  text-transform: uppercase;
+  color: #cecece;
+  font-family: Teutonic;
+  font-size: 1.8em;
+  letter-spacing: 0.04em;
 }
 
-.portrait {
-  width: 100px;
-  border-radius: 5px;
-  flex-shrink: 0;
-  img {
-    width: 100%;
-    border-radius: 5px;
-    box-shadow: 1px 1px 6px rgba(0, 0, 0, 0.45);
-  }
-}
-
-.portrait-empty {
-  width: 100px;
-  height: 155px;
-  border-radius: 5px;
-  flex-shrink: 0;
-  box-shadow: 1px 1px 6px rgba(0, 0, 0, 0.45);
-  background: rgba(100, 100, 100, 0.5);
+.portraits {
   display: flex;
-  align-items: center;
-  align-content: center;
-  justify-content: center;
-  justify-items: center;
-  img {
-    width: 80%;
-  }
+  flex-direction: column;
+  gap: 10px;
 }
 
 .investigator-row {
-  padding: 10px;
-  background: rgba(255, 255, 255, 0.2);
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 10px;
   display: flex;
-  gap: 10px;
-  justify-items: flex-start;
+  gap: 12px;
+  align-items: flex-start;
+
   & :deep(.choices) {
     margin: 0;
     padding: 0;
   }
   & :deep(form) {
-    margin: 0px;
+    margin: 0;
     height: fit-content;
   }
-  & :deep(.choose-deck) {
-    border-radius: 5px;
-  }
+
   .question {
     flex: 1;
-
     & :deep(.modal-contents) {
       border-radius: 5px;
       form {
@@ -483,38 +353,286 @@ form {
   }
 }
 
-.taboo-list {
-  color: #A8A749;
-  margin: auto;
-  padding: 5px 10px;
-  border-radius: 3px;
-  font-weight: bold;
-  text-transform: uppercase;
-  width: 100%;
+.portrait {
+  width: 100px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  img {
+    width: 100%;
+    border-radius: 5px;
+    box-shadow: 1px 1px 6px rgba(0, 0, 0, 0.45);
+  }
 }
 
-.buttons {
+.portrait-empty {
+  width: 100px;
+  height: 155px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  box-shadow: 1px 1px 6px rgba(0, 0, 0, 0.45);
+  background: rgba(100, 100, 100, 0.3);
   display: flex;
+  align-items: center;
+  justify-content: center;
+  img {
+    width: 80%;
+    opacity: 0.6;
+  }
+}
+
+.deck-main {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
+}
+
+/* Tab buttons — segmented control */
+.deck-tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 3px;
+  padding: 3px;
+  background: rgba(0,0,0,0.30);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+
   button {
-    border: 0;
-    padding: 10px;
-    flex: 1;
-    &:hover {
-      background-color: var(--button-1-highlight);
+    height: 36px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: rgba(255,255,255,0.50);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-size: 0.74em;
+    cursor: pointer;
+    transition: background 160ms ease, color 120ms ease, box-shadow 160ms ease;
+    outline: none;
+
+    &:hover:not(:disabled):not(.current) {
+      background: rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.80);
+    }
+
+    &.current {
+      background: rgba(110, 134, 64, 0.88);
+      color: white;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+    }
+
+    &:disabled {
+      opacity: 0.30;
+      cursor: not-allowed;
     }
   }
+}
 
-  button.current {
-    background-color: var(--button-1);
+/* Deck picker (UseExistingDeck) */
+.deck-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.deck-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: calc(100dvh - 380px);
+  min-height: 120px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+
+.deck-list-empty {
+  padding: 24px;
+  text-align: center;
+  color: #555;
+  font-size: 0.85em;
+}
+
+.deck-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-left: 3px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  color: #e0e0e0;
+
+  &:hover { background: rgba(255,255,255,0.08); }
+
+  &.guardian { border-left-color: var(--guardian-dark); &:hover { background: var(--guardian-extra-dark); } }
+  &.seeker   { border-left-color: var(--seeker-dark);   &:hover { background: var(--seeker-extra-dark); } }
+  &.rogue    { border-left-color: var(--rogue-dark);    &:hover { background: var(--rogue-extra-dark); } }
+  &.mystic   { border-left-color: var(--mystic-dark);   &:hover { background: var(--mystic-extra-dark); } }
+  &.survivor { border-left-color: var(--survivor-dark); &:hover { background: var(--survivor-extra-dark); } }
+  &.neutral  { border-left-color: var(--neutral-dark);  &:hover { background: var(--neutral-extra-dark); } }
+
+  &.selected {
+    border-color: rgba(110, 134, 64, 0.4);
+    border-left-color: rgba(110, 134, 64, 0.9);
+    background: rgba(110, 134, 64, 0.10);
+  }
+
+  &.has-error {
+    border-color: rgba(200, 50, 50, 0.5);
+    border-left-color: rgba(200, 50, 50, 0.9);
+    background: rgba(160, 25, 25, 0.15);
   }
 }
 
-option.guardian {
-  background-color: var(--guardian-dark);
+.deck-item-portrait {
+  width: 60px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  box-shadow: 1px 1px 5px rgba(0,0,0,0.5);
 }
 
-option.mystic {
-  background-color: var(--mystic-dark);
+.deck-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.deck-item-name {
+  font-size: 0.94em;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.deck-item-taboo {
+  font-size: 0.72em;
+  font-weight: 600;
+  color: #c8a96e;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.deck-item-error {
+  font-size: 0.75em;
+  color: #ff8080;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.deck-item-use {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 5px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(110, 134, 64, 0.85);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85em;
+  transition: background 150ms ease, transform 120ms ease, box-shadow 150ms ease;
+  outline: none;
+
+  &:hover {
+    background: rgba(110, 134, 64, 1);
+    transform: scale(1.08);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+  }
+
+  &:active { transform: scale(1.0); }
+}
+
+/* Load New Deck layout: portrait left, form right */
+.load-deck-layout {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.load-deck-portrait {
+  flex-shrink: 0;
+}
+
+.load-deck-content {
+  flex: 1;
+  min-width: 0;
+}
+
+/* UnsavedDeck form */
+.deck-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  p {
+    margin: 0;
+    padding: 0;
+  }
+
+  p.unsaved-deck-name {
+    color: #e0e0e0;
+    padding: 12px 16px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 6px;
+    text-align: center;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    font-size: 0.92em;
+  }
+}
+
+/* Primary action button */
+.primary-action {
+  width: 100%;
+  height: 48px;
+  border-radius: 5px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(110, 134, 64, 0.95);
+  color: white;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.88em;
+  cursor: pointer;
+  box-shadow: 0 5px 18px rgba(0,0,0,0.3);
+  transition: transform 120ms ease, background 160ms ease, box-shadow 160ms ease;
+  outline: none;
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    background: rgba(110, 134, 64, 1);
+    box-shadow: 0 10px 28px rgba(0,0,0,0.4);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+  }
+}
+
+/* Taboo shown on chosen investigator rows */
+.taboo-list {
+  color: #A8A749;
+  font-size: 0.78em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 0;
 }
 </style>

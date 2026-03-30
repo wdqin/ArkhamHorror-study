@@ -61,6 +61,10 @@ const checkAvifSupport = (): Promise<boolean> => {
 </script>
 
 <style>
+:root {
+  --nav-height: 36px;
+}
+
 html {
   color-scheme: dark;
   interpolate-size: allow-keywords;
@@ -152,6 +156,11 @@ button {
 @font-face {
   font-family: "ArkhamIcons";
   src: url("/fonts/arkhamicons.ttf");
+}
+
+@font-face {
+  font-family: "ArkhamEncounters";
+  src: url("/fonts/encounters.woff2") format("woff2");
 }
 
 @font-face {
@@ -605,7 +614,8 @@ h2.title {
 
 .page-container {
   height: 100%;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   width: 100%;
   margin-block: 10px;
 }
@@ -637,7 +647,8 @@ h2.title {
 
 .router-container {
   position: relative;
-  overflow: auto;
+  overflow-x: clip;
+  overflow-y: auto;
 }
 
 footer {
