@@ -778,16 +778,7 @@ async function addChaosToken(face: any){
     <UpgradeDeck :game="game" :key="playerId" :playerId="playerId" @choose="choose"/>
   </div>
   <div v-else-if="!gameOver" id="scenario" class="scenario" :data-scenario="scenario.id">
-    <div class="scenario-body" :class="{'split-view': splitView }">
-      <div class="scenario-background" :class="{ 'has-location-background': !!currentLocationBackground }" aria-hidden="true">
-        <img
-          v-if="currentLocationBackground"
-          class="scenario-background-image"
-          :src="currentLocationBackground"
-          alt=""
-          aria-hidden="true"
-        />
-      </div>
+    <div class="scenario-body">
       <Draggable v-if="showOutOfPlay || forcedShowOutOfPlay">
         <template #handle><header><h2>{{ $t('gameBar.outOfPlay') }}</h2></header></template>
         <div class="card-row-cards">
@@ -917,350 +908,362 @@ async function addChaosToken(face: any){
         @choose="choose"
         @close="hideCards"
       />
-      <div class="scenario-cards">
-        <div v-if="anyInTheShadowLocations || inTheShadows.length > 0 || inTheShadowsInvestigators.length > 0" class="in-the-shadows">
-          <template v-if="anyInTheShadowLocations">
-            <Location
-              v-if="inTheShadowLocations.left && game.locations[inTheShadowLocations.left]"
-              class="location"
+      <div class="scenario-stage" :class="{'split-view': splitView }">
+        <div class="scenario-background" :class="{ 'has-location-background': !!currentLocationBackground }" aria-hidden="true">
+          <img
+            v-if="currentLocationBackground"
+            class="scenario-background-image"
+            :src="currentLocationBackground"
+            :style="{ transform: 'scale(1)' }"
+            alt=""
+            aria-hidden="true"
+          />
+        </div>
+        <div class="scenario-cards">
+          <div v-if="anyInTheShadowLocations || inTheShadows.length > 0 || inTheShadowsInvestigators.length > 0" class="in-the-shadows">
+            <template v-if="anyInTheShadowLocations">
+              <Location
+                v-if="inTheShadowLocations.left && game.locations[inTheShadowLocations.left]"
+                class="location"
+                :game="game"
+                :playerId="playerId"
+                :location="game.locations[inTheShadowLocations.left]"
+                @choose="choose"
+                @show="doShowCards"
+              />
+              <Location
+                v-if="inTheShadowLocations.middle && game.locations[inTheShadowLocations.middle]"
+                class="location"
+                :game="game"
+                :playerId="playerId"
+                :location="game.locations[inTheShadowLocations.middle]"
+                @choose="choose"
+                @show="doShowCards"
+              />
+              <Location
+                v-if="inTheShadowLocations.right && game.locations[inTheShadowLocations.right]"
+                class="location"
+                :game="game"
+                :playerId="playerId"
+                :location="game.locations[inTheShadowLocations.right]"
+                @choose="choose"
+                @show="doShowCards"
+              />
+            </template>
+            <EnemyView
+              v-for="enemy in inTheShadows"
+              :key="enemy.id"
+              :enemy="enemy"
               :game="game"
               :playerId="playerId"
-              :location="game.locations[inTheShadowLocations.left]"
+              @choose="choose"
+            />
+            <Investigator
+              v-for="investigator in inTheShadowsInvestigators"
+              :key="investigator.id"
+              :choices="[]"
+              :investigator="investigator"
+              :playerId="playerId"
+              :game="game"
+              :portrait="true"
+            />
+          </div>
+          <div v-if="tarotCards.length > 0" class="tarot-cards">
+            <div
+              v-for="tarotCard in tarotCards"
+              :key="tarotCard.arcana"
+              class="tarot-card-container"
+              :class="{ [tarotCard.facing]: true, 'can-interact': tarotCardAbility(tarotCard) !== -1 }"
+              @click="choose(tarotCardAbility(tarotCard))"
+            >
+              <img :src="imgsrc(`tarot/${tarotCardImage(tarotCard)}`)" :class="tarotCard.facing" class="card tarot-card" />
+            </div>
+          </div>
+          <div v-if="topEnemyInVoid">
+            <EnemyView
+              :enemy="topEnemyInVoid"
+              :game="game"
+              :playerId="playerId"
+              @choose="choose"
+            />
+          </div>
+          <ScenarioDeck
+            v-for="[,scenarioDeck] in scenarioDecks"
+            :key="scenarioDeck[0]"
+            :deck="scenarioDeck"
+            :game="game"
+            :playerId="playerId"
+            @choose="choose"
+            @show="doShowCards"
+          />
+          <VictoryDisplay :game="game" :victoryDisplay="victoryDisplay" @show="showVictoryDisplay" @choose="choose" :playerId="playerId" />
+          <div class="scenario-encounter-decks">
+            <div v-if="topOfEncounterDiscard" class="discard" style="grid-area: encounterDiscard">
+              <div class="discard-card">
+                <img
+                  :src="topOfEncounterDiscard"
+                  class="card"
+                  @click="showDiscards"
+                />
+                <span class="deck-size">{{discards.length}}</span>
+              </div>
+
+
+              <div v-if="discards.length > 0" class="buttons">
+                <button v-if="discards.length > 0" class="view-discard-button" @click="showDiscards">{{viewDiscardLabel}}</button>
+                <template v-if="debug.active">
+                  <button @click="debug.send(game.id, {tag: 'ShuffleEncounterDiscardBackIn'})">Shuffle Back In</button>
+                </template>
+              </div>
+            </div>
+
+            <EncounterDeck
+              :game="game"
+              :playerId="playerId"
+              @choose="choose"
+              style="grid-area: encounterDeck"
+              v-if="props.scenario.hasEncounterDeck"
+            />
+
+            <div v-if="topOfSpectralDiscard" class="discard" style="grid-area: spectralDiscard"
+              >
+              <img
+                :src="topOfSpectralDiscard"
+                class="card"
+              />
+            </div>
+
+            <EncounterDeck
+              v-if="spectralEncounterDeck"
+              :spectral="spectralEncounterDeck.length"
+              :game="game"
+              :playerId="playerId"
+              @choose="choose"
+              style="grid-area: spectralDeck"
+            />
+          </div>
+
+          <div class="scenario-decks" :style="scenarioDeckStyles">
+            <template v-if="Object.values(game.agendas).length > 0">
+              <Agenda
+                v-for="(agenda, key) in game.agendas"
+                :key="key"
+                :agenda="agenda"
+                :cardsUnder="cardsUnderAgenda"
+                :cardsNextTo="cardsNextToAgenda"
+                :game="game"
+                :playerId="playerId"
+                :style="{ 'grid-area': `agenda${agenda.deckId}`, 'justify-self': 'center' }"
+                @choose="choose"
+                @show="doShowCards"
+              />
+            </template>
+            <div v-else-if="agendaGroupedTreacheries.length > 0" class="treacheries">
+              <div v-for="([cCode, treacheries], idx) in agendaGroupedTreacheries" :key="cCode" class="treachery-group" :style="{ zIndex: (agendaGroupedTreacheries.length - idx) * 10 }">
+                <div v-for="treacheryId in treacheries" class="treachery-card" :key="treacheryId" >
+                  <TreacheryView
+                    :treachery="game.treacheries[treacheryId]"
+                    :game="game"
+                    :playerId="playerId"
+                    @choose="$emit('choose', $event)"
+                    :overlay-delay="310"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <Act
+              v-for="(act, key) in game.acts"
+              :key="key"
+              :act="act"
+              :cardsUnder="cardsUnderAct"
+              :cardsNextTo="cardsNextToAct"
+              :game="game"
+              :playerId="playerId"
+              :style="{ 'grid-area': `act${act.deckId}`, 'justify-self': 'center' }"
               @choose="choose"
               @show="doShowCards"
             />
-            <Location
-              v-if="inTheShadowLocations.middle && game.locations[inTheShadowLocations.middle]"
-              class="location"
-              :game="game"
-              :playerId="playerId"
-              :location="game.locations[inTheShadowLocations.middle]"
-              @choose="choose"
-              @show="doShowCards"
-            />
-            <Location
-              v-if="inTheShadowLocations.right && game.locations[inTheShadowLocations.right]"
-              class="location"
-              :game="game"
-              :playerId="playerId"
-              :location="game.locations[inTheShadowLocations.right]"
-              @choose="choose"
-              @show="doShowCards"
-            />
-          </template>
+          </div>
+
           <EnemyView
-            v-for="enemy in inTheShadows"
+            v-for="enemy in pursuit"
             :key="enemy.id"
             :enemy="enemy"
             :game="game"
             :playerId="playerId"
             @choose="choose"
           />
-          <Investigator
-            v-for="investigator in inTheShadowsInvestigators"
-            :key="investigator.id"
-            :choices="[]"
-            :investigator="investigator"
-            :playerId="playerId"
-            :game="game"
-            :portrait="true"
-          />
-        </div>
-        <div v-if="tarotCards.length > 0" class="tarot-cards">
-          <div
-            v-for="tarotCard in tarotCards"
-            :key="tarotCard.arcana"
-            class="tarot-card-container"
-            :class="{ [tarotCard.facing]: true, 'can-interact': tarotCardAbility(tarotCard) !== -1 }"
-            @click="choose(tarotCardAbility(tarotCard))"
-          >
-            <img :src="imgsrc(`tarot/${tarotCardImage(tarotCard)}`)" :class="tarotCard.facing" class="card tarot-card" />
-          </div>
-        </div>
-        <div v-if="topEnemyInVoid">
+
           <EnemyView
-            :enemy="topEnemyInVoid"
+            v-for="enemy in globalEnemies"
+            :key="enemy.id"
+            :enemy="enemy"
             :game="game"
             :playerId="playerId"
             @choose="choose"
           />
-        </div>
-        <ScenarioDeck
-          v-for="[,scenarioDeck] in scenarioDecks"
-          :key="scenarioDeck[0]"
-          :deck="scenarioDeck"
-          :game="game"
-          :playerId="playerId"
-          @choose="choose"
-          @show="doShowCards"
-        />
-        <VictoryDisplay :game="game" :victoryDisplay="victoryDisplay" @show="showVictoryDisplay" @choose="choose" :playerId="playerId" />
-        <div class="scenario-encounter-decks">
-          <div v-if="topOfEncounterDiscard" class="discard" style="grid-area: encounterDiscard">
-            <div class="discard-card">
-              <img
-                :src="topOfEncounterDiscard"
-                class="card"
-                @click="showDiscards"
-              />
-              <span class="deck-size">{{discards.length}}</span>
-            </div>
 
-
-            <div v-if="discards.length > 0" class="buttons">
-              <button v-if="discards.length > 0" class="view-discard-button" @click="showDiscards">{{viewDiscardLabel}}</button>
-              <template v-if="debug.active">
-                <button @click="debug.send(game.id, {tag: 'ShuffleEncounterDiscardBackIn'})">Shuffle Back In</button>
-              </template>
-            </div>
-          </div>
-
-          <EncounterDeck
+          <Story
+            v-for="story in globalStories"
+            :key="story.id"
+            :story="story"
             :game="game"
             :playerId="playerId"
             @choose="choose"
-            style="grid-area: encounterDeck"
-            v-if="props.scenario.hasEncounterDeck"
           />
 
-          <div v-if="topOfSpectralDiscard" class="discard" style="grid-area: spectralDiscard"
-            >
-            <img
-              :src="topOfSpectralDiscard"
-              class="card"
-            />
-          </div>
-
-          <EncounterDeck
-            v-if="spectralEncounterDeck"
-            :spectral="spectralEncounterDeck.length"
+          <Asset
+            v-for="asset in globalAssets"
+            :key="asset.id"
+            :asset="asset"
             :game="game"
             :playerId="playerId"
             @choose="choose"
-            style="grid-area: spectralDeck"
           />
-        </div>
 
-        <div class="scenario-decks" :style="scenarioDeckStyles">
-          <template v-if="Object.values(game.agendas).length > 0">
-            <Agenda
-              v-for="(agenda, key) in game.agendas"
-              :key="key"
-              :agenda="agenda"
-              :cardsUnder="cardsUnderAgenda"
-              :cardsNextTo="cardsNextToAgenda"
-              :game="game"
-              :playerId="playerId"
-              :style="{ 'grid-area': `agenda${agenda.deckId}`, 'justify-self': 'center' }"
-              @choose="choose"
-              @show="doShowCards"
-            />
-          </template>
-          <div v-else-if="agendaGroupedTreacheries.length > 0" class="treacheries">
-            <div v-for="([cCode, treacheries], idx) in agendaGroupedTreacheries" :key="cCode" class="treachery-group" :style="{ zIndex: (agendaGroupedTreacheries.length - idx) * 10 }">
-              <div v-for="treacheryId in treacheries" class="treachery-card" :key="treacheryId" >
-                <TreacheryView
-                  :treachery="game.treacheries[treacheryId]"
+          <div class="scenario-guide">
+            <div class="scenario-guide-card">
+              <div class="scenario-guide-card">
+                <img
+                  class="card"
+                  :src="scenarioGuide"
+                  :data-spent-keys="JSON.stringify(spentKeys)"
+                  :data-depth="currentDepth"
+                />
+                <img
+                  v-for="reference in additionalReferences"
+                  class="card"
+                  :src="reference"
+                />
+                <AbilityButton
+                  v-for="ability in abilities"
+                  :key="ability.index"
+                  :ability="ability.contents"
                   :game="game"
-                  :playerId="playerId"
-                  @choose="$emit('choose', $event)"
-                  :overlay-delay="310"
+                  @click="choose(ability.index)"
                 />
               </div>
+              <PoolItem class="depth" v-if="currentDepth" type="resource" :amount="currentDepth" />
+              <PoolItem class="civilians-slain" v-if="civiliansSlain" type="resource" :amount="civiliansSlain" />
+              <PoolItem class="targets" v-if="targets" type="resource" :amount="targets" />
+              <PoolItem class="scraps" v-if="scraps" type="resource" :amount="scraps" />
+              <PoolItem class="switches" v-if="switches" type="resource" :amount="switches" />
+              <PoolItem class="darkness-level" v-if="darknessLevel" type="resource" :amount="darknessLevel" />
+              <div class="spent-keys" v-if="spentKeys.length > 0">
+                <KeyToken v-for="k in spentKeys" :key="keyToId(k)" :keyToken="k" :game="game" :playerId="playerId" @choose="choose" />
+              </div>
+              <PoolItem
+                v-if="signOfTheGods"
+                class="signOfTheGods"
+                type="resource"
+                tooltip="Sign of the Gods"
+                :amount="signOfTheGods"
+              />
+              <PoolItem
+                v-if="distortion"
+                class="distortion"
+                type="damage"
+                tooltip="Distortion"
+                :amount="distortion"
+              />
             </div>
+            <div class="pool" v-if="hasPool">
+              <PoolItem v-if="resources && resources > 0" type="resource" :amount="resources" />
+              <PoolItem v-if="damage && damage > 0" type="damage" :amount="damage" />
+            </div>
+            <div class="keys" v-if="keys.length > 0">
+              <KeyToken v-for="k in keys" :key="keyToId(k)" :keyToken="k" :game="game" :playerId="playerId" @choose="choose" />
+            </div>
+            <button v-if="cardsUnderScenarioReference.length > 0" class="view-cards-under-button" @click="showCardsUnderScenarioReference">{{viewUnderScenarioReference}}</button>
           </div>
 
-          <Act
-            v-for="(act, key) in game.acts"
-            :key="key"
-            :act="act"
-            :cardsUnder="cardsUnderAct"
-            :cardsNextTo="cardsNextToAct"
-            :game="game"
-            :playerId="playerId"
-            :style="{ 'grid-area': `act${act.deckId}`, 'justify-self': 'center' }"
-            @choose="choose"
-            @show="doShowCards"
-          />
-        </div>
-
-        <EnemyView
-          v-for="enemy in pursuit"
-          :key="enemy.id"
-          :enemy="enemy"
-          :game="game"
-          :playerId="playerId"
-          @choose="choose"
-        />
-
-        <EnemyView
-          v-for="enemy in globalEnemies"
-          :key="enemy.id"
-          :enemy="enemy"
-          :game="game"
-          :playerId="playerId"
-          @choose="choose"
-        />
-
-        <Story
-          v-for="story in globalStories"
-          :key="story.id"
-          :story="story"
-          :game="game"
-          :playerId="playerId"
-          @choose="choose"
-        />
-
-        <Asset
-          v-for="asset in globalAssets"
-          :key="asset.id"
-          :asset="asset"
-          :game="game"
-          :playerId="playerId"
-          @choose="choose"
-        />
-
-        <div class="scenario-guide">
-          <div class="scenario-guide-card">
-            <div class="scenario-guide-card">
-              <img
-                class="card"
-                :src="scenarioGuide"
-                :data-spent-keys="JSON.stringify(spentKeys)"
-                :data-depth="currentDepth"
-              />
-              <img
-                v-for="reference in additionalReferences"
-                class="card"
-                :src="reference"
-              />
-              <AbilityButton
-                v-for="ability in abilities"
-                :key="ability.index"
-                :ability="ability.contents"
+          <div v-if="hollowed.length > 0" class="discard">
+            <div class="discard-card">
+              <CardView
                 :game="game"
-                @click="choose(ability.index)"
+                :card="hollowed[0]"
+                :playerId="playerId"
+                class="card"
+                @click="showHollowed"
+                @choose="choose"
               />
+              <span class="deck-size">{{hollowed.length}}</span>
             </div>
-            <PoolItem class="depth" v-if="currentDepth" type="resource" :amount="currentDepth" />
-            <PoolItem class="civilians-slain" v-if="civiliansSlain" type="resource" :amount="civiliansSlain" />
-            <PoolItem class="targets" v-if="targets" type="resource" :amount="targets" />
-            <PoolItem class="scraps" v-if="scraps" type="resource" :amount="scraps" />
-            <PoolItem class="switches" v-if="switches" type="resource" :amount="switches" />
-            <PoolItem class="darkness-level" v-if="darknessLevel" type="resource" :amount="darknessLevel" />
-            <div class="spent-keys" v-if="spentKeys.length > 0">
-              <KeyToken v-for="k in spentKeys" :key="keyToId(k)" :keyToken="k" :game="game" :playerId="playerId" @choose="choose" />
-            </div>
-            <PoolItem
-              v-if="signOfTheGods"
-              class="signOfTheGods"
-              type="resource"
-              tooltip="Sign of the Gods"
-              :amount="signOfTheGods"
-            />
-            <PoolItem
-              v-if="distortion"
-              class="distortion"
-              type="damage"
-              tooltip="Distortion"
-              :amount="distortion"
-            />
           </div>
-          <div class="pool" v-if="hasPool">
-            <PoolItem v-if="resources && resources > 0" type="resource" :amount="resources" />
-            <PoolItem v-if="damage && damage > 0" type="damage" :amount="damage" />
-          </div>
-          <div class="keys" v-if="keys.length > 0">
-            <KeyToken v-for="k in keys" :key="keyToId(k)" :keyToken="k" :game="game" :playerId="playerId" @choose="choose" />
-          </div>
-          <button v-if="cardsUnderScenarioReference.length > 0" class="view-cards-under-button" @click="showCardsUnderScenarioReference">{{viewUnderScenarioReference}}</button>
+          <SkillTest
+              v-if="game.skillTest"
+              :game="game"
+              :chaosBag="scenario.chaosBag"
+              :skillTest="game.skillTest"
+              :playerId="playerId"
+              @choose="choose"
+          >
+          </SkillTest>
+
         </div>
 
-        <div v-if="hollowed.length > 0" class="discard">
-          <div class="discard-card">
-            <CardView
+
+        <div class="location-cards-container" @dblclick.passive="toggleZoom">
+          <Connections :game="game" :playerId="playerId" />
+          <input v-model="locationsZoom" type="range" min="1" max="3" step="0.25" class="zoomer" />
+          <transition-group name="map" tag="div" ref="locationMap" class="location-cards" :style="locationStyles" @before-leave="beforeLeave">
+            <Location
+              v-for="location in locations"
+              class="location"
+              :key="location.label"
               :game="game"
-              :card="hollowed[0]"
               :playerId="playerId"
-              class="card"
-              @click="showHollowed"
+              :location="location"
+              :style="{ 'grid-area': location.label, 'justify-self': 'center' }"
+              @choose="choose"
+              @show="doShowCards"
+            />
+            <EnemyView
+              v-for="enemy in enemiesAsLocations"
+              :key="enemy.id"
+              :enemy="enemy"
+              :game="game"
+              :playerId="playerId"
+              :data-label="enemy.asSelfLocation"
+              :data-rotation="enemy.meta?.rotation ?? null"
+              :style="{ 'grid-area': enemy.asSelfLocation, 'justify-self': 'center', 'align-items': 'center' }"
               @choose="choose"
             />
-            <span class="deck-size">{{hollowed.length}}</span>
-          </div>
-        </div>
-        <SkillTest
-            v-if="game.skillTest"
-            :game="game"
-            :chaosBag="scenario.chaosBag"
-            :skillTest="game.skillTest"
-            :playerId="playerId"
-            @choose="choose"
-        >
-        </SkillTest>
-
-      </div>
-
-
-      <div class="location-cards-container" @dblclick.passive="toggleZoom">
-        <Connections :game="game" :playerId="playerId" />
-        <input v-model="locationsZoom" type="range" min="1" max="3" step="0.25" class="zoomer" />
-        <transition-group name="map" tag="div" ref="locationMap" class="location-cards" :style="locationStyles" @before-leave="beforeLeave">
-          <Location
-            v-for="location in locations"
-            class="location"
-            :key="location.label"
-            :game="game"
-            :playerId="playerId"
-            :location="location"
-            :style="{ 'grid-area': location.label, 'justify-self': 'center' }"
-            @choose="choose"
-            @show="doShowCards"
-          />
-          <EnemyView
-            v-for="enemy in enemiesAsLocations"
-            :key="enemy.id"
-            :enemy="enemy"
-            :game="game"
-            :playerId="playerId"
-            :data-label="enemy.asSelfLocation"
-            :data-rotation="enemy.meta?.rotation ?? null"
-            :style="{ 'grid-area': enemy.asSelfLocation, 'justify-self': 'center', 'align-items': 'center' }"
-            @choose="choose"
-          />
-          <div
-            v-for="group in gridConcealed"
-            :key="`${group.position.x}-${group.position.y}`"
-            class='concealed-card-group'
-            :style="{'grid-area': positionToGridArea(group.position)}"
-          >
-            <div v-if="group.unknown.length > 0" class='concealed-card-stack'>
-              <ConcealedCardView :card="group.unknown[0]" :game="game" :playerId="playerId" @choose="choose" />
-              <span class='count'>{{group.unknown.length}}</span>
+            <div
+              v-for="group in gridConcealed"
+              :key="`${group.position.x}-${group.position.y}`"
+              class='concealed-card-group'
+              :style="{'grid-area': positionToGridArea(group.position)}"
+            >
+              <div v-if="group.unknown.length > 0" class='concealed-card-stack'>
+                <ConcealedCardView :card="group.unknown[0]" :game="game" :playerId="playerId" @choose="choose" />
+                <span class='count'>{{group.unknown.length}}</span>
+              </div>
+              <ConcealedCardView v-for="card in group.known" :key="card.id" :card="card" :game="game" :playerId="playerId" @choose="choose" />
             </div>
-            <ConcealedCardView v-for="card in group.known" :key="card.id" :card="card" :game="game" :playerId="playerId" @choose="choose" />
-          </div>
 
-          <template v-if="barriers">
-            <div v-for="[area, amount] in Object.entries(barriers)" :key="area" class="barrier" :class="{ vertical: isVertical(area) }" :style="{ 'grid-area': `barrier-${area}` }">
-              <img v-for="n in amount" :key="n" :src="imgsrc('resource.png')" />
-              <button v-if="debug.active && (amount as number > 0)" @click="debug.send(game.id, {tag: 'ScenarioCountDecrementBy', contents: [{ 'tag': 'Barriers', 'contents': area.split('--') }, 1]})">x</button>
-            </div>
-          </template>
-
-          <template v-if="scenario.usesGrid">
-            <template v-for="u in unusedLabels" :key="u">
-              <div
-                v-if="unusedCanInteract(u) !== -1"
-                class="empty-grid-position card"
-                :class="{ 'can-interact': unusedCanInteract(u) !== -1}"
-                :style="{ 'grid-area': u}"
-                @click="choose(unusedCanInteract(u))"
-                >
+            <template v-if="barriers">
+              <div v-for="[area, amount] in Object.entries(barriers)" :key="area" class="barrier" :class="{ vertical: isVertical(area) }" :style="{ 'grid-area': `barrier-${area}` }">
+                <img v-for="n in amount" :key="n" :src="imgsrc('resource.png')" />
+                <button v-if="debug.active && (amount as number > 0)" @click="debug.send(game.id, {tag: 'ScenarioCountDecrementBy', contents: [{ 'tag': 'Barriers', 'contents': area.split('--') }, 1]})">x</button>
               </div>
             </template>
-          </template>
-        </transition-group>
+
+            <template v-if="scenario.usesGrid">
+              <template v-for="u in unusedLabels" :key="u">
+                <div
+                  v-if="unusedCanInteract(u) !== -1"
+                  class="empty-grid-position card"
+                  :class="{ 'can-interact': unusedCanInteract(u) !== -1}"
+                  :style="{ 'grid-area': u}"
+                  @click="choose(unusedCanInteract(u))"
+                  >
+                </div>
+              </template>
+            </template>
+          </transition-group>
+        </div>
       </div>
 
       <div id="player-zone">
@@ -1412,7 +1415,22 @@ async function addChaosToken(face: any){
   overflow: hidden;
 
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  min-height: 0;
+
+  > * {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+.scenario-stage {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
 
   > * {
     position: relative;
@@ -1503,7 +1521,6 @@ async function addChaosToken(face: any){
   height: 100%;
   object-fit: cover;
   object-position: center 20%;
-  transform: scale(1.72);
   filter: blur(2px) saturate(1.1);
   opacity: 0;
   transition: opacity 0.25s ease-out;
