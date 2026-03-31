@@ -104,6 +104,9 @@ const hasPool = computed(() => {
       <div class="image-container">
         <img :src="image"
           :class="{'story--can-interact': cardAction !== -1 }"
+          data-entity-kind="story"
+          :data-entity-id="id"
+          data-anchor-role="primary"
           :data-crossed-off="crossedOff"
           :data-checkmarks="JSON.stringify(checkmarks)"
           class="card story"

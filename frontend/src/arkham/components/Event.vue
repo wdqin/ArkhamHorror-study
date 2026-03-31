@@ -98,6 +98,9 @@ const choose = (index: number) => emits('choose', index)
   <div class="event" :class="{ attached }">
     <img
       :src="image"
+      data-entity-kind="event"
+      :data-entity-id="id"
+      data-anchor-role="primary"
       :class="{ 'event--can-interact': cardAction !== -1, exhausted, attached }"
       class="card event"
       @click="$emit('choose', cardAction)"

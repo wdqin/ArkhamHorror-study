@@ -1,8 +1,10 @@
 <script lang="ts" setup>
 import UpgradeDeck from '@/arkham/components/UpgradeDeck.vue';
+import gsap from 'gsap';
 import { EyeIcon, QuestionMarkCircleIcon, ViewColumnsIcon, ArchiveBoxXMarkIcon, ArrowPathIcon } from '@heroicons/vue/20/solid'
 import {
   watchEffect,
+  watch,
   onMounted,
   onUpdated,
   onBeforeUnmount,
@@ -55,11 +57,26 @@ import { useDebug } from '@/arkham/debug'
 import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
 import { IsMobile } from '@/arkham/isMobile';
+import type { Investigator as InvestigatorType } from '@/arkham/types/Investigator';
 const { t } = useI18n();
 
 // types
 interface RefWrapper<T> {
   ref: ComputedRef<T>
+}
+
+type MovementEntityKind = 'investigator' | 'enemy' | 'asset' | 'story' | 'treachery' | 'event'
+type MovementAnchorRole = 'portrait' | 'primary'
+
+interface MovementAnchorSnapshot {
+  clone: HTMLElement
+  element: HTMLElement | null
+  rect: DOMRect
+}
+
+interface MovementDescriptor {
+  before?: MovementAnchorSnapshot
+  after?: MovementAnchorSnapshot
 }
 
 const tarotCardBackground = `url(${imgsrc('background.jpg')})`
@@ -92,14 +109,246 @@ const forcedShowDiscard = ref(false)
 const locationMap = ref<Element | null>(null)
 const viewingDiscard = ref(false)
 const cardRowTitle = ref("")
+const scenarioRoot = ref<HTMLElement | null>(null)
+const movementOverlay = ref<HTMLElement | null>(null)
 // Atlach Nacha specific refs
 const previousRotation = ref(0)
 const legsSet = ref(["legs1", "legs2", "legs3", "legs4"])
 
 let legObserver: MutationObserver | null = null
 const locationsZoom = ref(1);
+const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
 
 const { isMobile } = IsMobile();
+
+const movementAnchorKey = (kind: MovementEntityKind, id: string, role: MovementAnchorRole) =>
+  `${kind}:${id}:${role}`
+
+function placementValue(value: unknown): string {
+  if (value === undefined) return ''
+  if (value === null) return 'null'
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(placementValue).join(',')}]`
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value)
+  }
+  return String(value)
+}
+
+function serializePlacement(placement: { tag: string, contents?: unknown, swarmHost?: string }) {
+  if (placement.tag === 'AsSwarm') {
+    return `AsSwarm:${placement.swarmHost ?? ''}`
+  }
+
+  return `${placement.tag}:${placementValue(placement.contents)}`
+}
+
+function investigatorPlacement(investigator: InvestigatorType) {
+  switch (investigator.placement.tag) {
+    case 'AtLocation':
+      return `AtLocation:${investigator.location}`
+    case 'InTheShadows':
+      return 'InTheShadows'
+    case 'InVehicle':
+      return `InVehicle:${investigator.placement.contents}`
+    default:
+      return null
+  }
+}
+
+function movableEntityKinds(game: Game) {
+  return {
+    investigator: Object.values(game.investigators).map((investigator) => ({
+      key: movementAnchorKey('investigator', investigator.id, 'portrait'),
+      placement: investigatorPlacement(investigator),
+    })),
+    enemy: Object.values(game.enemies).map((enemy) => ({
+      key: movementAnchorKey('enemy', enemy.id, 'primary'),
+      placement: serializePlacement(enemy.placement),
+    })),
+    asset: Object.values(game.assets).map((asset) => ({
+      key: movementAnchorKey('asset', asset.id, 'primary'),
+      placement: serializePlacement(asset.placement),
+    })),
+    story: Object.values(game.stories).map((story) => ({
+      key: movementAnchorKey('story', story.id, 'primary'),
+      placement: serializePlacement(story.placement),
+    })),
+    treachery: Object.values(game.treacheries).map((treachery) => ({
+      key: movementAnchorKey('treachery', treachery.id, 'primary'),
+      placement: serializePlacement(treachery.placement),
+    })),
+    event: Object.values(game.events).map((event) => ({
+      key: movementAnchorKey('event', event.id, 'primary'),
+      placement: serializePlacement(event.placement),
+    })),
+  }
+}
+
+function movementPlacements(game: Game) {
+  const result = new Map<string, string | null>()
+  const entities = movableEntityKinds(game)
+
+  for (const group of Object.values(entities)) {
+    for (const entry of group) {
+      result.set(entry.key, entry.placement)
+    }
+  }
+
+  return result
+}
+
+function cloneAnchor(node: HTMLElement) {
+  const clone = node.cloneNode(true) as HTMLElement
+  clone.removeAttribute('data-entity-kind')
+  clone.removeAttribute('data-entity-id')
+  clone.removeAttribute('data-anchor-role')
+  return clone
+}
+
+function collectMovementAnchors() {
+  const root = scenarioRoot.value
+  const snapshots = new Map<string, MovementAnchorSnapshot>()
+  if (!root) return snapshots
+
+  const nodes = root.querySelectorAll<HTMLElement>('[data-entity-kind][data-entity-id][data-anchor-role]')
+  for (const node of nodes) {
+    const { entityKind, entityId, anchorRole } = node.dataset
+    if (!entityKind || !entityId || !anchorRole) continue
+
+    const rect = node.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) continue
+
+    snapshots.set(
+      `${entityKind}:${entityId}:${anchorRole}`,
+      {
+        clone: cloneAnchor(node),
+        element: node,
+        rect,
+      }
+    )
+  }
+
+  return snapshots
+}
+
+function applyOverlayBaseStyle(node: HTMLElement, rect: DOMRect) {
+  node.style.position = 'fixed'
+  node.style.left = `${rect.left}px`
+  node.style.top = `${rect.top}px`
+  node.style.width = `${rect.width}px`
+  node.style.height = `${rect.height}px`
+  node.style.margin = '0'
+  node.style.pointerEvents = 'none'
+  node.style.zIndex = '1000'
+  node.style.transformOrigin = 'center center'
+  node.style.maxWidth = 'none'
+}
+
+function hideAnchor(anchor: MovementAnchorSnapshot) {
+  if (!anchor.element) return () => {}
+  const previous = anchor.element.style.opacity
+  anchor.element.style.opacity = '0'
+  return () => {
+    anchor.element!.style.opacity = previous
+  }
+}
+
+function playMovementAnimation(descriptor: MovementDescriptor) {
+  const overlay = movementOverlay.value
+  if (!overlay) return
+
+  const { before, after } = descriptor
+  if (!before && !after) return
+
+  const start = before?.rect ?? after?.rect
+  const end = after?.rect ?? before?.rect
+  if (!start || !end) return
+
+  const node = (before?.clone ?? after?.clone)?.cloneNode(true) as HTMLElement | undefined
+  if (!node) return
+
+  applyOverlayBaseStyle(node, start)
+  overlay.appendChild(node)
+
+  const restoreAfter = after ? hideAnchor(after) : () => {}
+  const timeline = gsap.timeline({
+    defaults: { duration: 0.32, ease: 'power2.out' },
+    onComplete: () => {
+      restoreAfter()
+      node.remove()
+    },
+  })
+
+  if (before && after) {
+    timeline.to(node, {
+      x: end.left - start.left,
+      y: end.top - start.top,
+      width: end.width,
+      height: end.height,
+      opacity: 1,
+    })
+    return
+  }
+
+  if (after) {
+    timeline.fromTo(node, {
+      opacity: 0,
+      scale: 0.92,
+    }, {
+      opacity: 1,
+      scale: 1,
+    })
+    return
+  }
+
+  timeline.to(node, {
+    opacity: 0,
+    scale: 0.92,
+  })
+}
+
+function buildMovementDescriptors(oldGame: Game, newGame: Game, beforeAnchors: Map<string, MovementAnchorSnapshot>, afterAnchors: Map<string, MovementAnchorSnapshot>) {
+  const beforePlacements = movementPlacements(oldGame)
+  const afterPlacements = movementPlacements(newGame)
+  const keys = new Set([...beforePlacements.keys(), ...afterPlacements.keys()])
+  const descriptors: MovementDescriptor[] = []
+
+  for (const key of keys) {
+    const beforePlacement = beforePlacements.get(key) ?? null
+    const afterPlacement = afterPlacements.get(key) ?? null
+    if (beforePlacement === afterPlacement) continue
+
+    const before = beforeAnchors.get(key)
+    const after = afterAnchors.get(key)
+    if (!before && !after) continue
+
+    descriptors.push({ before, after })
+  }
+
+  return descriptors
+}
+
+watch(
+  () => props.game,
+  async (newGame, oldGame) => {
+    if (!oldGame || reducedMotionQuery.matches) return
+
+    const beforeAnchors = collectMovementAnchors()
+    await nextTick()
+    const afterAnchors = collectMovementAnchors()
+    const descriptors = buildMovementDescriptors(oldGame, newGame, beforeAnchors, afterAnchors)
+
+    for (const descriptor of descriptors) {
+      playMovementAnimation(descriptor)
+    }
+  },
+  { flush: 'pre' }
+)
 
 // callbacks
 onMounted(() => {
@@ -777,7 +1026,8 @@ async function addChaosToken(face: any){
   <div v-if="upgradeDeck" id="game" class="game">
     <UpgradeDeck :game="game" :key="playerId" :playerId="playerId" @choose="choose"/>
   </div>
-  <div v-else-if="!gameOver" id="scenario" class="scenario" :data-scenario="scenario.id">
+  <div v-else-if="!gameOver" id="scenario" ref="scenarioRoot" class="scenario" :data-scenario="scenario.id">
+    <div ref="movementOverlay" class="movement-overlay" aria-hidden="true"></div>
     <div class="scenario-body">
       <Draggable v-if="showOutOfPlay || forcedShowOutOfPlay">
         <template #handle><header><h2>{{ $t('gameBar.outOfPlay') }}</h2></header></template>
@@ -1727,9 +1977,17 @@ async function addChaosToken(face: any){
 .scenario {
   display: flex;
   user-select: none;
+  position: relative;
   width: 100%;
   height: 100%;
   flex: 1;
+}
+
+.movement-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1000;
 }
 
 .active-phase {

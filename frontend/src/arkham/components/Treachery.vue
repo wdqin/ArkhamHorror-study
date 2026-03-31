@@ -96,6 +96,9 @@ const cardAction = computed(() => choices.value.findIndex(canInteract))
     />
     <img
       :src="image"
+      data-entity-kind="treachery"
+      :data-entity-id="id"
+      data-anchor-role="primary"
       class="card"
       :class="{ 'treachery--can-interact': cardAction !== -1, attached }"
       @click="$emit('choose', cardAction)"

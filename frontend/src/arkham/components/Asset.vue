@@ -260,6 +260,9 @@ function startDrag(event: DragEvent) {
         </div>
         <div class="card-wrapper" :class="{ 'asset--can-interact': canInteract}">
           <img
+            data-entity-kind="asset"
+            :data-entity-id="id"
+            data-anchor-role="primary"
             :data-id="id"
             :data-image-id="dataImage"
             :src="image"
